@@ -22,6 +22,7 @@ export function ObjectList() {
   const printBlack = useProjectStore((s) => s.ui.printBlackSymbols);
 
   const floor = floors.find((f) => f.id === activeFloorId);
+  const showFurniture = useProjectStore((s) => s.ui.showFurniture);
   const mpp = floor?.background?.metersPerPixel ?? 0.02;
 
   const groups = useMemo(() => {
@@ -32,7 +33,7 @@ export function ObjectList() {
       .filter((s) => s.floorId === activeFloorId)
       .filter((s) => {
         const d = getSymbolDef(s.kind);
-        return !d.isFurniture || true;
+        return showFurniture || !d.isFurniture;
       })
       .sort((a, b) => {
         const ca = getSymbolDef(a.kind).category;
@@ -40,7 +41,7 @@ export function ObjectList() {
         return ca.localeCompare(cb, "de");
       });
     return { walls: fw, openings: fo, rooms: fr, symbols: fs };
-  }, [walls, openings, rooms, symbols, activeFloorId]);
+  }, [walls, openings, rooms, symbols, activeFloorId, showFurniture]);
 
   const pick = (id: string) => {
     setTool("select");

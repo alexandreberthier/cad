@@ -15,7 +15,11 @@ import { QuantityList } from "./QuantityList";
 
 type SideTab = "edit" | "list" | "plan";
 
-export function PropertiesPanel() {
+export function PropertiesPanel({
+  className,
+}: {
+  className?: string;
+} = {}) {
   const ui = useProjectStore((s) => s.ui);
   const walls = useProjectStore((s) => s.walls);
   const openings = useProjectStore((s) => s.openings);
@@ -86,7 +90,12 @@ export function PropertiesPanel() {
   const calReady = Boolean(cal?.pointA && cal?.pointB);
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-panel">
+    <aside
+      className={
+        className ??
+        "flex w-[300px] shrink-0 flex-col border-l border-line bg-panel"
+      }
+    >
       <div className="border-b border-line p-3 pb-2">
         <div className="font-[family-name:var(--font-display)] text-sm font-semibold">
           Eigenschaften

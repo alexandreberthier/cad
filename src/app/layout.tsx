@@ -30,6 +30,15 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "ElektroCAD",
   },
+  icons: {
+    apple: "/icons/icon-192.png",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
   manifest: "/manifest.webmanifest",
 };
 
@@ -39,6 +48,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

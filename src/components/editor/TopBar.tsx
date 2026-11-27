@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "@/store/projectStore";
+import { useFeedbackStore } from "@/store/feedbackStore";
 import { IconRedo, IconUndo } from "@/components/icons/ToolIcons";
 import {
   downloadBomCsv,
@@ -11,11 +12,44 @@ import {
 } from "@/lib/exportProject";
 import { downloadDxf } from "@/lib/exportDxf";
 import { capturePlanPng } from "@/lib/planStage";
+import {
+  deleteProject,
+  listProjects,
+  type ProjectRecord,
+} from "@/lib/db/dexie";
 import type { ProjectData } from "@/types/project";
 
 const FLOOR_PRESETS = ["KG", "EG", "OG", "DG"];
 
 type MenuId = "plan" | "export" | null;
+
+function formatSaved(iso: string | null): string {
+  if (!iso) return "Noch nicht gespeichert";
+  try {
+    return `Gespeichert · ${new Date(iso).toLocaleTimeString("de-DE", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+  } catch {
+    return "Gespeichert";
+  }
+}
+
+function useUndoRedoFlags() {
+  const [flags, setFlags] = useState({ canUndo: false, canRedo: false });
+  useEffect(() => {
+    const sync = () => {
+      const t = useProjectStore.temporal.getState();
+      setFlags({
+        canUndo: t.pastStates.length > 0,
+        canRedo: t.futureStates.length > 0,
+      });
+    };
+    sync();
+    return useProjectStore.temporal.subscribe(sync);
+  }, []);
+  return flags;
+}
 
 export function TopBar() {
   const meta = useProjectStore((s) => s.meta);
@@ -35,14 +69,19 @@ export function TopBar() {
   const setViewMode = useProjectStore((s) => s.setViewMode);
   const renameProject = useProjectStore((s) => s.renameProject);
   const loadProjectData = useProjectStore((s) => s.loadProjectData);
+  const persist = useProjectStore((s) => s.persist);
+  const showToast = useFeedbackStore((s) => s.showToast);
+  const lastSavedAt = useFeedbackStore((s) => s.lastSavedAt);
+  const setHelpOpen = useFeedbackStore((s) => s.setHelpOpen);
+  const { canUndo, canRedo } = useUndoRedoFlags();
   const undo = () => useProjectStore.temporal.getState().undo();
   const redo = () => useProjectStore.temporal.getState().redo();
   const activeFloor = floors.find((f) => f.id === activeFloorId);
   const importRef = useRef<HTMLInputElement>(null);
   const planMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
-  const [note, setNote] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -63,7 +102,34 @@ export function TopBar() {
     };
   }, [openMenu]);
 
+  useEffect(() => {
+    if (openMenu !== "plan") return;
+    void listProjects()
+      .then(setProjects)
+      .catch(() => setProjects([]));
+  }, [openMenu, meta.id, meta.updatedAt]);
+
   const closeMenus = () => setOpenMenu(null);
+
+  const refreshProjects = async () => {
+    try {
+      setProjects(await listProjects());
+    } catch {
+      setProjects([]);
+    }
+  };
+
+  const openStoredProject = async (record: ProjectRecord) => {
+    if (record.id === meta.id) {
+      closeMenus();
+      return;
+    }
+    await persist();
+    loadProjectData(record.data);
+    useFeedbackStore.getState().setLastSavedAt(record.updatedAt);
+    showToast(`Geöffnet: ${record.name}`);
+    closeMenus();
+  };
 
   const snapshot = (): ProjectData => {
     const s = useProjectStore.getState();
@@ -95,7 +161,7 @@ export function TopBar() {
             title="Projektname"
           />
           <div className="text-[10px] text-muted">
-            {activeFloor?.name ?? "—"}
+            {activeFloor?.name ?? "—"} · {formatSaved(lastSavedAt)}
           </div>
         </div>
       </div>
@@ -118,7 +184,7 @@ export function TopBar() {
               onContextMenu={(e) => {
                 e.preventDefault();
                 if (floors.length <= 1) {
-                  setNote("Mindestens eine Etage nötig");
+                  showToast("Mindestens eine Etage nötig");
                   return;
                 }
                 if (
@@ -190,17 +256,17 @@ export function TopBar() {
             Plan
           </button>
           {openMenu === "plan" && (
-            <div className="absolute right-0 z-30 mt-1 w-56 rounded-md border border-line bg-panel p-1 shadow-lg">
+            <div className="absolute right-0 z-30 mt-1 w-64 rounded-md border border-line bg-panel p-1 shadow-lg">
               <MenuButton
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Neuen leeren Plan starten? Aktuelles Projekt wird ersetzt (lokal gespeichert bleibt bis zum Speichern/Export)."
-                    )
-                  ) {
-                    newProject("Mein Haus");
-                    setNote("Neuer Plan");
-                  }
+                onClick={async () => {
+                  await persist();
+                  newProject("Mein Haus");
+                  await persist();
+                  useFeedbackStore
+                    .getState()
+                    .setLastSavedAt(new Date().toISOString());
+                  showToast("Neuer Plan gestartet");
+                  await refreshProjects();
                   closeMenus();
                 }}
                 label="Neuer Plan"
@@ -213,7 +279,7 @@ export function TopBar() {
                     )
                   ) {
                     clearActiveFloor();
-                    setNote("Etage geleert");
+                    showToast("Etage geleert");
                   }
                   closeMenus();
                 }}
@@ -222,7 +288,7 @@ export function TopBar() {
               <MenuButton
                 onClick={() => {
                   if (floors.length <= 1) {
-                    setNote("Mindestens eine Etage nötig");
+                    showToast("Mindestens eine Etage nötig");
                     closeMenus();
                     return;
                   }
@@ -236,6 +302,64 @@ export function TopBar() {
                 }}
                 label="Diese Etage löschen"
               />
+              <div className="mx-1 my-1 border-t border-line" />
+              <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Gespeicherte Projekte
+              </p>
+              <div className="max-h-40 overflow-y-auto">
+                {projects.length === 0 && (
+                  <p className="px-2 py-1.5 text-[11px] text-muted">
+                    Noch keine weiteren Projekte
+                  </p>
+                )}
+                {projects.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center gap-1 rounded px-1 hover:bg-surface"
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate px-1 py-1.5 text-left text-xs"
+                      onClick={() => void openStoredProject(p)}
+                      title={new Date(p.updatedAt).toLocaleString("de-DE")}
+                    >
+                      <span
+                        className={
+                          p.id === meta.id ? "font-semibold text-ink" : ""
+                        }
+                      >
+                        {p.name || "Ohne Namen"}
+                      </span>
+                      {p.id === meta.id && (
+                        <span className="ml-1 text-[10px] text-muted">
+                          (aktuell)
+                        </span>
+                      )}
+                    </button>
+                    {p.id !== meta.id && (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded px-1.5 py-1 text-[10px] text-danger hover:bg-panel"
+                        title="Projekt löschen"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (
+                            !window.confirm(
+                              `Projekt „${p.name}“ endgültig löschen?`
+                            )
+                          )
+                            return;
+                          await deleteProject(p.id);
+                          await refreshProjects();
+                          showToast("Projekt gelöscht");
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
               <div className="mx-1 my-1 border-t border-line" />
               <label className="flex items-center justify-between gap-2 px-2 py-1.5 text-xs">
                 <span className="text-muted">Default-Höhe</span>
@@ -341,7 +465,7 @@ export function TopBar() {
               <MenuButton
                 onClick={() => {
                   downloadDxf(snapshot());
-                  setNote("DXF gespeichert (Meter, Layer)");
+                  showToast("DXF gespeichert");
                   closeMenus();
                 }}
                 label="CAD (DXF)"
@@ -350,10 +474,10 @@ export function TopBar() {
                 onClick={() => {
                   const png = capturePlanPng();
                   downloadReportPdf(snapshot(), png);
-                  setNote(
+                  showToast(
                     png
                       ? "PDF mit Plan gespeichert"
-                      : "PDF ohne Plan – 2D-Ansicht war nicht offen"
+                      : "PDF ohne Plan – 2D-Ansicht öffnen"
                   );
                   closeMenus();
                 }}
@@ -363,7 +487,7 @@ export function TopBar() {
                 onClick={() => {
                   const png = capturePlanPng();
                   if (!png) {
-                    setNote("Plan-PNG braucht die 2D- oder Split-Ansicht");
+                    showToast("PNG braucht die 2D- oder Split-Ansicht");
                     closeMenus();
                     return;
                   }
@@ -371,7 +495,7 @@ export function TopBar() {
                   a.href = png;
                   a.download = `${meta.name || "plan"}.png`;
                   a.click();
-                  setNote("Plan als PNG gespeichert");
+                  showToast("Plan als PNG gespeichert");
                   closeMenus();
                 }}
                 label="Plan (PNG)"
@@ -383,11 +507,6 @@ export function TopBar() {
                 }}
                 label="Projekt laden…"
               />
-              {note && (
-                <p className="px-2 py-1 text-[10px] leading-snug text-muted">
-                  {note}
-                </p>
-              )}
             </div>
           )}
           <input
@@ -400,21 +519,36 @@ export function TopBar() {
               e.target.value = "";
               if (!file) return;
               try {
+                await persist();
                 loadProjectData(parseProjectFile(await file.text()));
-                setNote("Projekt geladen");
+                await persist();
+                useFeedbackStore
+                  .getState()
+                  .setLastSavedAt(new Date().toISOString());
+                showToast("Projekt geladen");
               } catch {
-                setNote("Keine gültige Projektdatei");
+                showToast("Keine gültige Projektdatei");
               }
             }}
           />
         </div>
+
+        <button
+          type="button"
+          title="Tastenkürzel (?)"
+          onClick={() => setHelpOpen(true)}
+          className="hidden rounded-md px-2 py-1.5 text-xs font-semibold text-muted hover:bg-surface hover:text-ink sm:inline"
+        >
+          ?
+        </button>
 
         <div className="flex items-center gap-0.5">
           <button
             type="button"
             title="Rückgängig (Strg+Z)"
             onClick={undo}
-            className="rounded-md p-1.5 text-muted hover:bg-surface hover:text-ink"
+            disabled={!canUndo}
+            className="rounded-md p-1.5 text-muted hover:bg-surface hover:text-ink disabled:opacity-30"
           >
             <IconUndo className="h-4 w-4" />
           </button>
@@ -422,7 +556,8 @@ export function TopBar() {
             type="button"
             title="Wiederholen (Strg+Y)"
             onClick={redo}
-            className="rounded-md p-1.5 text-muted hover:bg-surface hover:text-ink"
+            disabled={!canRedo}
+            className="rounded-md p-1.5 text-muted hover:bg-surface hover:text-ink disabled:opacity-30"
           >
             <IconRedo className="h-4 w-4" />
           </button>

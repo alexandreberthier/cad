@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import type { ProjectData } from "@/types/project";
 import { bomCsv, bomForSymbols, circuitForest, kindSummary } from "@/lib/bom";
 import { CATEGORY_LABELS } from "@/lib/symbols/catalog";
+import { normalizeProjectData } from "@/lib/projectFactory";
 
 export function downloadProjectJson(data: ProjectData) {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -106,7 +107,7 @@ export function parseProjectFile(text: string): ProjectData {
   if (!data?.meta?.id || !Array.isArray(data.floors) || !Array.isArray(data.symbols)) {
     throw new Error("Keine ElektroCAD-Projektdatei");
   }
-  return data;
+  return normalizeProjectData(data);
 }
 
 function safeName(name: string): string {

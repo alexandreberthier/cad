@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useProjectStore } from "@/store/projectStore";
+import { useFeedbackStore } from "@/store/feedbackStore";
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
@@ -16,6 +17,12 @@ export function useKeyboardShortcuts() {
 
       const store = useProjectStore.getState();
       const temporal = useProjectStore.temporal.getState();
+
+      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        e.preventDefault();
+        useFeedbackStore.getState().toggleHelp();
+        return;
+      }
 
       if (e.key === "Shift" && !e.repeat) {
         store.setShiftFreehand(true);

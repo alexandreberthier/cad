@@ -128,7 +128,7 @@ interface ProjectStore extends ProjectData {
 
 const defaultUi: UiState = {
   mode: "homeowner",
-  viewMode: "split",
+  viewMode: "2d",
   tool: "select",
   selectedSymbolKind: null,
   selectedIds: [],
@@ -294,6 +294,7 @@ export const useProjectStore = create<ProjectStore>()(
               ? { ...f, background: { ...f.background, opacity } }
               : f
           ),
+          meta: withUpdated(get().meta),
         });
       },
 
@@ -305,6 +306,7 @@ export const useProjectStore = create<ProjectStore>()(
               ? { ...f, background: { ...f.background, locked } }
               : f
           ),
+          meta: withUpdated(get().meta),
         });
       },
 
@@ -344,6 +346,7 @@ export const useProjectStore = create<ProjectStore>()(
               },
             };
           }),
+          meta: withUpdated(get().meta),
         });
       },
 
@@ -383,6 +386,7 @@ export const useProjectStore = create<ProjectStore>()(
                 }
               : f
           ),
+          meta: withUpdated(get().meta),
         });
       },
 

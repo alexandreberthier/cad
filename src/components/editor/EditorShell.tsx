@@ -5,6 +5,9 @@ import dynamic from "next/dynamic";
 import { TopBar } from "./TopBar";
 import { Toolbar } from "./Toolbar";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { ToastHost } from "@/components/ui/ToastHost";
+import { ShortcutsHelp } from "@/components/ui/ShortcutsHelp";
+import { MobileSheets } from "./MobileSheets";
 import { useProjectStore } from "@/store/projectStore";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAutoPersist } from "@/hooks/useAutoPersist";
@@ -33,13 +36,12 @@ export function EditorShell() {
   useAutoPersist();
 
   useEffect(() => {
-    // Prevent iOS/iPad bounce scroll while drawing
     const prevent = (e: TouchEvent) => {
       if ((e.target as HTMLElement)?.closest?.("[data-canvas-root]")) {
-        // allow pinching handled by konva; block page scroll
+        e.preventDefault();
       }
     };
-    document.addEventListener("touchmove", prevent, { passive: true });
+    document.addEventListener("touchmove", prevent, { passive: false });
     return () => document.removeEventListener("touchmove", prevent);
   }, []);
 
@@ -64,11 +66,14 @@ export function EditorShell() {
               </div>
             </div>
           )}
+          <MobileSheets />
         </main>
         <div className="hidden md:flex">
           <PropertiesPanel />
         </div>
       </div>
+      <ToastHost />
+      <ShortcutsHelp />
     </div>
   );
 }

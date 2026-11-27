@@ -42,6 +42,8 @@ html,
 body {
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -50,6 +52,12 @@ body {
   color: var(--ink);
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0
+    env(safe-area-inset-left);
+}
+
+[data-canvas-root] {
+  touch-action: none;
 }
 
 button,

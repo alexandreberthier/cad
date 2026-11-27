@@ -30,6 +30,7 @@ import { resolvePlanSymbolColor } from "@/lib/symbols/colors";
 import { useBackgroundImage } from "@/hooks/useBackgroundImage";
 import { KonvaSymbol } from "@/components/symbols/KonvaSymbol";
 import { registerPlanStage } from "@/lib/planStage";
+import { loadBackgroundFile } from "@/lib/background";
 
 const WORLD = { w: 4000, h: 3000 };
 
@@ -79,6 +80,13 @@ export function PlanCanvas() {
   const panLastScreen = useRef<{ x: number; y: number } | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClickRef = useRef(0);
+  const pinchRef = useRef<{
+    active: boolean;
+    lastDist: number;
+    lastCenter: { x: number; y: number } | null;
+  }>({ active: false, lastDist: 0, lastCenter: null });
+  const viewRef = useRef({ scale: 1, x: 40, y: 40 });
+  viewRef.current = { scale, x: stagePos.x, y: stagePos.y };
 
   useEffect(() => {
     registerPlanStage(stageRef.current);
@@ -133,8 +141,15 @@ export function PlanCanvas() {
   const previewSnapPoint = useProjectStore((s) => s.previewSnapPoint);
   const moveSymbol = useProjectStore((s) => s.moveSymbol);
   const setTool = useProjectStore((s) => s.setTool);
+  const setBackground = useProjectStore((s) => s.setBackground);
+  const bgFileRef = useRef<HTMLInputElement>(null);
 
   const bgImage = useBackgroundImage(floor?.background?.src);
+  const isEmptyFloor =
+    walls.length === 0 &&
+    rooms.length === 0 &&
+    symbols.length === 0 &&
+    !floor?.background;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -277,34 +292,127 @@ export function PlanCanvas() {
     setTool,
   ]);
 
+  const zoomAt = (
+    screen: { x: number; y: number },
+    oldScale: number,
+    newScale: number,
+    pos: { x: number; y: number }
+  ) => {
+    const clamped = Math.min(8, Math.max(0.15, newScale));
+    const point = {
+      x: (screen.x - pos.x) / oldScale,
+      y: (screen.y - pos.y) / oldScale,
+    };
+    return {
+      scale: clamped,
+      pos: {
+        x: screen.x - point.x * clamped,
+        y: screen.y - point.y * clamped,
+      },
+    };
+  };
+
+  const touchScreenPoint = (touch: Touch) => {
+    const stage = stageRef.current;
+    if (!stage) return { x: touch.clientX, y: touch.clientY };
+    const rect = stage.container().getBoundingClientRect();
+    return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+  };
+
   const onWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     if (!stage) return;
-    const oldScale = scale;
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
     const direction = e.evt.deltaY > 0 ? -1 : 1;
     const factor = 1.08;
-    const newScale = Math.min(
-      8,
-      Math.max(0.15, direction > 0 ? oldScale * factor : oldScale / factor)
+    const next = zoomAt(
+      pointerPos,
+      scale,
+      direction > 0 ? scale * factor : scale / factor,
+      stagePos
     );
-    const mousePointTo = {
-      x: (pointerPos.x - stagePos.x) / oldScale,
-      y: (pointerPos.y - stagePos.y) / oldScale,
-    };
-    setScale(newScale);
-    setStagePos({
-      x: pointerPos.x - mousePointTo.x * newScale,
-      y: pointerPos.y - mousePointTo.y * newScale,
-    });
+    setScale(next.scale);
+    setStagePos(next.pos);
+  };
+
+  const handleTouchStart = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const touches = e.evt.touches;
+    if (touches.length >= 2) {
+      e.evt.preventDefault();
+      clearEmptyGesture();
+      setEmptyPan(false);
+      const a = touchScreenPoint(touches[0]);
+      const b = touchScreenPoint(touches[1]);
+      pinchRef.current = {
+        active: true,
+        lastDist: Math.hypot(b.x - a.x, b.y - a.y),
+        lastCenter: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      };
+      return;
+    }
+    handlePointerDown(e);
+  };
+
+  const handleTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const touches = e.evt.touches;
+    if (touches.length >= 2) {
+      e.evt.preventDefault();
+      const a = touchScreenPoint(touches[0]);
+      const b = touchScreenPoint(touches[1]);
+      const distNow = Math.hypot(b.x - a.x, b.y - a.y);
+      const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const prev = pinchRef.current;
+      if (!prev.active || prev.lastDist < 1) {
+        pinchRef.current = {
+          active: true,
+          lastDist: distNow,
+          lastCenter: center,
+        };
+        return;
+      }
+      const view = viewRef.current;
+      const scaleFactor = distNow / prev.lastDist;
+      const next = zoomAt(
+        center,
+        view.scale,
+        view.scale * scaleFactor,
+        { x: view.x, y: view.y }
+      );
+      // Zwei Finger: zusätzlich verschieben
+      if (prev.lastCenter) {
+        next.pos = {
+          x: next.pos.x + (center.x - prev.lastCenter.x),
+          y: next.pos.y + (center.y - prev.lastCenter.y),
+        };
+      }
+      viewRef.current = { scale: next.scale, x: next.pos.x, y: next.pos.y };
+      setScale(next.scale);
+      setStagePos(next.pos);
+      pinchRef.current = {
+        active: true,
+        lastDist: distNow,
+        lastCenter: center,
+      };
+      return;
+    }
+    if (pinchRef.current.active) return;
+    handlePointerMove();
+  };
+
+  const handleTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    if (e.evt.touches.length < 2) {
+      pinchRef.current = { active: false, lastDist: 0, lastCenter: null };
+    }
+    if (e.evt.touches.length === 0) finishMarquee();
   };
 
   const handlePointerDown = (
     e: Konva.KonvaEventObject<MouseEvent | TouchEvent>
   ) => {
     if (ui.spacePanning || ui.tool === "pan") return;
+    if (pinchRef.current.active) return;
 
     // Rechtsklick: Wandkette / Raum abschließen
     const native = e.evt as MouseEvent;
@@ -566,7 +674,7 @@ export function PlanCanvas() {
     if (ui.tool === "select")
       return marquee
         ? "Rechteck-Auswahl… loslassen"
-        : "Wählen/Verschieben (Snap an Wand/Ecke, Shift=frei) · Q/E drehen · Strg+C/V";
+        : "Wählen/Verschieben · 2 Finger = Zoom/Pan · Langdruck = Mehrfach · ? = Hilfe";
     switch (ui.tool) {
       case "wall":
         return draftStart
@@ -623,11 +731,11 @@ export function PlanCanvas() {
         }}
         onWheel={onWheel}
         onMouseDown={handlePointerDown}
-        onTouchStart={handlePointerDown}
+        onTouchStart={handleTouchStart}
         onMouseMove={handlePointerMove}
-        onTouchMove={handlePointerMove}
+        onTouchMove={handleTouchMove}
         onMouseUp={finishMarquee}
-        onTouchEnd={finishMarquee}
+        onTouchEnd={handleTouchEnd}
         onMouseLeave={() => {
           if (marqueeActive.current) finishMarquee();
         }}
@@ -808,7 +916,18 @@ export function PlanCanvas() {
                       }
                       return;
                     }
-                    setSelectedIds([s.id]);
+                    const additive =
+                      e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey;
+                    if (additive && ui.tool === "select") {
+                      const ids = useProjectStore.getState().ui.selectedIds;
+                      setSelectedIds(
+                        ids.includes(s.id)
+                          ? ids.filter((x) => x !== s.id)
+                          : [...ids, s.id]
+                      );
+                    } else {
+                      setSelectedIds([s.id]);
+                    }
                     if (ui.tool === "symbol") setTool("select");
                   }}
                   onTap={(e) => {
@@ -1079,6 +1198,64 @@ export function PlanCanvas() {
           )}
         </Layer>
       </Stage>
+
+      {isEmptyFloor && ui.tool === "select" && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+          <div className="pointer-events-auto w-full max-w-md rounded-xl border border-line bg-panel/95 p-5 shadow-lg backdrop-blur-sm">
+            <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink">
+              Plan starten
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Grundriss laden oder direkt Wände und Räume zeichnen.
+            </p>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                className="rounded-md bg-ink px-3 py-2 text-sm font-semibold text-panel"
+                onClick={() => bgFileRef.current?.click()}
+              >
+                Grundriss laden
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-surface px-3 py-2 text-sm font-semibold text-ink hover:bg-line/40"
+                onClick={() => setTool("wall")}
+              >
+                Wand zeichnen
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-surface px-3 py-2 text-sm font-semibold text-ink hover:bg-line/40"
+                onClick={() => setTool("room")}
+              >
+                Raum zeichnen
+              </button>
+            </div>
+            <p className="mt-3 text-[11px] text-muted">
+              Tipp: <kbd className="rounded bg-surface px-1">?</kbd> zeigt alle
+              Tastenkürzel · Auto-Speichern lokal
+            </p>
+            <input
+              ref={bgFileRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file || !activeFloorId) return;
+                try {
+                  const bg = await loadBackgroundFile(file);
+                  setBackground(activeFloorId, bg);
+                  setTool("calibrate");
+                } catch {
+                  /* ignore invalid files */
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center gap-2">
         <div className="rounded-md bg-panel/95 px-2.5 py-1.5 text-[11px] text-muted shadow-sm">
