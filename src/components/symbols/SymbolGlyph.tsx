@@ -152,6 +152,9 @@ function GlyphPaths({ kind, color }: { kind: SymbolKind; color: string }) {
     case "outlet_counter":
     case "outlet_switched":
     case "outlet_usb":
+    case "outlet_16a":
+    case "outlet_outdoor":
+    case "outlet_child_safe":
       return (
         <g>
           {/* Halbkreis zur Raumseite – DIN-Stil */}
@@ -164,6 +167,11 @@ function GlyphPaths({ kind, color }: { kind: SymbolKind; color: string }) {
           {kind === "outlet_usb" && (
             <text x="16" y="26" textAnchor="middle" fontSize="5" fill={color}>
               USB
+            </text>
+          )}
+          {kind === "outlet_child_safe" && (
+            <text x="16" y="26" textAnchor="middle" fontSize="5" fill={color}>
+              KS
             </text>
           )}
         </g>
@@ -209,11 +217,15 @@ function GlyphPaths({ kind, color }: { kind: SymbolKind; color: string }) {
         </g>
       );
     case "switch_off":
+    case "switch_pilot":
       return (
         <g>
           <circle cx="16" cy="16" r="8" {...S} />
           <line x1="16" y1="8" x2="16" y2="16" {...S} />
           <line x1="16" y1="16" x2="22" y2="12" {...S} />
+          {kind === "switch_pilot" && (
+            <circle cx="11" cy="21" r="2" fill={color} />
+          )}
         </g>
       );
     case "switch_changeover":
@@ -284,14 +296,16 @@ function GlyphPaths({ kind, color }: { kind: SymbolKind; color: string }) {
         </g>
       );
     case "rj45":
+    case "rj45_double":
     case "phone":
+    case "hdmi_wall":
       return (
         <g>
           <path d="M10 12h12v10H10z" {...S} />
           <path d="M10 12c0-4 12-4 12 0" {...S} />
-          {kind === "rj45" && (
+          {(kind === "rj45" || kind === "rj45_double") && (
             <text x="16" y="20" textAnchor="middle" fontSize="6" fill={color}>
-              RJ
+              {kind === "rj45_double" ? "2×" : "RJ"}
             </text>
           )}
         </g>
@@ -312,6 +326,7 @@ function GlyphPaths({ kind, color }: { kind: SymbolKind; color: string }) {
         </g>
       );
     case "doorbell":
+    case "doorbell_outdoor":
       return (
         <g>
           <circle cx="16" cy="16" r="8" {...S} />
@@ -341,12 +356,38 @@ function GlyphPaths({ kind, color }: { kind: SymbolKind; color: string }) {
           <path d="M12 14l4 6 4-6" {...S} />
         </g>
       );
+    case "co_detector":
+      return (
+        <g>
+          <circle cx="16" cy="16" r="7" {...S} />
+          <text x="16" y="19" textAnchor="middle" fontSize="7" fill={color}>
+            CO
+          </text>
+        </g>
+      );
+    case "doorbell_chime":
+      return (
+        <g>
+          <path d="M10 20c0-6 12-6 12 0" {...S} />
+          <line x1="16" y1="8" x2="16" y2="12" {...S} />
+          <circle cx="16" cy="7" r="2" {...S} />
+        </g>
+      );
     case "distribution_board":
+    case "main_panel":
+    case "meter_cabinet":
+    case "data_cabinet":
+    case "surge_protector":
       return (
         <g>
           <rect x="8" y="6" width="16" height="20" {...S} />
           <path d="M8 6l16 20" {...S} />
           <rect x="8" y="6" width="8" height="10" fill={color} opacity="0.2" />
+          {kind === "main_panel" && (
+            <text x="16" y="18" textAnchor="middle" fontSize="6" fill={color}>
+              HV
+            </text>
+          )}
         </g>
       );
     case "junction_box":

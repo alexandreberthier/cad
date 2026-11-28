@@ -42,6 +42,11 @@ export function QuantityList() {
                   .map((s) => s.id);
                 setTool("select");
                 setSelectedIds(ids);
+                queueMicrotask(() => {
+                  window.dispatchEvent(
+                    new CustomEvent("elektrocad:fit-selection")
+                  );
+                });
               }}
             >
               <span className="w-6 shrink-0 text-right font-semibold tabular-nums">
@@ -49,6 +54,12 @@ export function QuantityList() {
               </span>
               <span className="min-w-0 flex-1 truncate">
                 {mode === "pro" ? r.labelPro : r.label}
+                {r.circuits.length > 0 && (
+                  <span className="ml-1 text-[10px] font-normal text-muted">
+                    {r.circuits.slice(0, 3).join(", ")}
+                    {r.circuits.length > 3 ? "…" : ""}
+                  </span>
+                )}
               </span>
               <span className="shrink-0 text-[10px] text-muted">
                 {CATEGORY_LABELS[r.category]}

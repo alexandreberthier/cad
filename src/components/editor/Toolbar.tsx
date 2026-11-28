@@ -9,6 +9,7 @@ import {
 } from "@/lib/symbols/catalog";
 import { resolveSymbolColor } from "@/lib/symbols/colors";
 import { loadBackgroundFile } from "@/lib/background";
+import { useFeedbackStore } from "@/store/feedbackStore";
 import { SymbolGlyph } from "@/components/symbols/SymbolGlyph";
 import {
   IconCalibrate,
@@ -89,19 +90,37 @@ export function Toolbar() {
   const tool = useProjectStore((s) => s.ui.tool);
   const mode = useProjectStore((s) => s.ui.mode);
   const selectedKind = useProjectStore((s) => s.ui.selectedSymbolKind);
+  const recentKinds = useProjectStore((s) => s.ui.recentSymbolKinds ?? []);
   const setTool = useProjectStore((s) => s.setTool);
   const setSelectedSymbolKind = useProjectStore((s) => s.setSelectedSymbolKind);
   const setBackground = useProjectStore((s) => s.setBackground);
   const activeFloorId = useProjectStore((s) => s.activeFloorId);
+  const hasBackground = useProjectStore((s) =>
+    Boolean(s.floors.find((f) => f.id === s.activeFloorId)?.background)
+  );
   const symbolColorDefaults = useProjectStore((s) => s.symbolColorDefaults);
   const printBlackSymbols = useProjectStore((s) => s.ui.printBlackSymbols);
   const fileRef = useRef<HTMLInputElement>(null);
   /** null = Kategorie-Liste, sonst geöffnete Kategorie */
   const [openCat, setOpenCat] = useState<SymbolCategory | null>(null);
+  const [query, setQuery] = useState("");
 
   const categories = CATEGORY_ORDER.filter((cat) =>
     SYMBOL_CATALOG.some((s) => s.category === cat)
   );
+
+  const searchHits =
+    query.trim().length >= 2
+      ? SYMBOL_CATALOG.filter((s) => {
+          const q = query.trim().toLowerCase();
+          return (
+            s.label.toLowerCase().includes(q) ||
+            s.labelPro.toLowerCase().includes(q) ||
+            s.kind.toLowerCase().includes(q) ||
+            CATEGORY_LABELS[s.category].toLowerCase().includes(q)
+          );
+        }).slice(0, 24)
+      : [];
 
   return (
     <aside className="flex w-[72px] shrink-0 flex-col border-r border-line bg-panel sm:w-[220px] lg:w-[240px]">
@@ -117,7 +136,16 @@ export function Toolbar() {
                 key={t.id}
                 type="button"
                 title={t.tip}
-                onClick={() => setTool(t.id)}
+                onClick={() => {
+                  if (t.id === "calibrate" && !hasBackground) {
+                    useFeedbackStore
+                      .getState()
+                      .showToast("Zuerst Grundriss laden");
+                    fileRef.current?.click();
+                    return;
+                  }
+                  setTool(t.id);
+                }}
                 className={`flex items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-[11px] font-semibold transition ${
                   active ? "bg-ink text-panel" : "text-ink hover:bg-surface"
                 }`}
@@ -139,9 +167,18 @@ export function Toolbar() {
           onChange={async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
-            const bg = await loadBackgroundFile(file);
-            setBackground(activeFloorId, bg);
-            setTool("calibrate");
+            try {
+              const bg = await loadBackgroundFile(file);
+              setBackground(activeFloorId, bg);
+              setTool("calibrate");
+              useFeedbackStore
+                .getState()
+                .showToast("Grundriss geladen · 2 Punkte für Maßstab setzen");
+            } catch {
+              useFeedbackStore
+                .getState()
+                .showToast("Datei konnte nicht geladen werden");
+            }
             e.target.value = "";
           }}
         />
@@ -157,11 +194,93 @@ export function Toolbar() {
 
       {/* Symbolbibliothek: Kategorien untereinander → Klick öffnet Vollansicht */}
       <div className="hidden min-h-0 flex-1 flex-col overflow-hidden sm:flex">
-        {openCat == null ? (
-          <>
-            <div className="border-b border-line px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">
-              Symbolbibliothek
+        <div className="border-b border-line px-2 py-1.5">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">
+            Symbolbibliothek
+          </div>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Suchen…"
+            className="mt-1.5 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs outline-none focus:border-accent"
+          />
+        </div>
+        {searchHits.length > 0 ? (
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <div className="grid grid-cols-3 gap-1.5">
+              {searchHits.map((s) => {
+                const active = selectedKind === s.kind && tool === "symbol";
+                const label = mode === "pro" ? s.labelPro : s.label;
+                return (
+                  <button
+                    key={s.kind}
+                    type="button"
+                    title={label}
+                    onClick={() => {
+                      setSelectedSymbolKind(s.kind as SymbolKind);
+                      setQuery("");
+                    }}
+                    className={`flex flex-col items-center gap-1 rounded-md border px-1 py-2 transition ${
+                      active
+                        ? "border-accent bg-accent-soft ring-1 ring-accent"
+                        : "border-line bg-surface hover:border-ink/25"
+                    }`}
+                  >
+                    <SymbolGlyph
+                      kind={s.kind}
+                      size={32}
+                      color={resolveSymbolColor(s.kind, {
+                        projectDefaults: symbolColorDefaults,
+                        printBlack: printBlackSymbols,
+                      })}
+                    />
+                    <span className="line-clamp-2 w-full text-center text-[9px] font-medium leading-tight">
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+          </div>
+        ) : openCat == null ? (
+          <>
+            {recentKinds.length > 0 && (
+              <div className="border-b border-line px-2 py-1.5">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+                  Zuletzt
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {recentKinds.map((kind) => {
+                    const def = SYMBOL_CATALOG.find((s) => s.kind === kind);
+                    if (!def) return null;
+                    const active = selectedKind === kind && tool === "symbol";
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        title={mode === "pro" ? def.labelPro : def.label}
+                        onClick={() => setSelectedSymbolKind(kind)}
+                        className={`rounded-md border p-1 ${
+                          active
+                            ? "border-accent bg-accent-soft"
+                            : "border-line bg-surface hover:border-ink/25"
+                        }`}
+                      >
+                        <SymbolGlyph
+                          kind={kind}
+                          size={26}
+                          color={resolveSymbolColor(kind, {
+                            projectDefaults: symbolColorDefaults,
+                            printBlack: printBlackSymbols,
+                          })}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="min-h-0 flex-1 overflow-y-auto p-1">
               {categories.map((cat) => {
                 const count = SYMBOL_CATALOG.filter(

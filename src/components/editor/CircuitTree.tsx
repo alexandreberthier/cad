@@ -25,11 +25,22 @@ export function CircuitTree() {
     return circuitForest(symbols.filter((s) => s.floorId === activeFloorId));
   }, [symbols, activeFloorId]);
 
-  if (forest.deviceCount === 0 && forest.panels.every((p) => !p.panel)) {
-    return null;
-  }
-
   const isOpen = (key: string, fallback = true) => open[key] ?? fallback;
+
+  if (forest.deviceCount === 0 && forest.panels.every((p) => !p.panel)) {
+    return (
+      <section>
+        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+          Verteiler
+        </h3>
+        <p className="text-[10px] leading-snug text-muted">
+          Noch leer. UV/HV platzieren, Geräte setzen, dann im Profi-Modus
+          Stromkreis (z.&nbsp;B. F1.1), FI und Verteiler zuweisen – der Baum
+          baut sich automatisch auf (UV → FI → Kreis → Gerät).
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section>
@@ -40,8 +51,9 @@ export function CircuitTree() {
         <span className="text-[10px] text-muted">{forest.deviceCount} Geräte</span>
       </div>
       <p className="mb-2 text-[10px] leading-snug text-muted">
-        UV → FI → Stromkreis → Verbraucher. Bei einer UV hängen alle Geräte
-        darunter. Bei mehreren UVs das Feld „Verteiler“ am Symbol setzen.
+        Struktur wie in der Praxis: UV → FI → Stromkreis → Verbraucher.
+        Profi-Felder am Symbol: Verteiler, FI-Gruppe, Stromkreis, Leitungstyp
+        (NYM…). Klick im Baum markiert die Geräte im Plan.
       </p>
 
       <ul className="max-h-72 space-y-1 overflow-y-auto text-xs">
@@ -91,6 +103,11 @@ export function CircuitTree() {
                             {rOpen ? "▾" : "▸"}
                           </span>
                           <span className="font-medium">{rcd.title}</span>
+                          {rcd.rcdHint && (
+                            <span className="text-[9px] text-muted">
+                              {rcd.rcdHint}
+                            </span>
+                          )}
                           <span className="text-[10px] text-muted">
                             {rcd.count}
                           </span>
@@ -111,6 +128,13 @@ export function CircuitTree() {
                                         [cKey]: !cOpen,
                                       }));
                                       setSelectedIds(c.devices.map((d) => d.id));
+                                      queueMicrotask(() => {
+                                        window.dispatchEvent(
+                                          new CustomEvent(
+                                            "elektrocad:fit-selection"
+                                          )
+                                        );
+                                      });
                                     }}
                                   >
                                     <span className="w-3 text-muted">
@@ -121,6 +145,13 @@ export function CircuitTree() {
                                       {c.devices.length}
                                     </span>
                                   </button>
+                                  {(c.breakerRating || c.cableType) && (
+                                    <div className="px-4 text-[10px] font-medium text-ink/80">
+                                      {[c.breakerRating, c.cableType]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                    </div>
+                                  )}
                                   <div className="px-4 text-[10px] leading-snug text-muted">
                                     {kindSummary(c.devices, pro)}
                                   </div>

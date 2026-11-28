@@ -14,13 +14,16 @@ import {
 } from "react-konva";
 import type Konva from "konva";
 import { useProjectStore } from "@/store/projectStore";
+import { useFeedbackStore } from "@/store/feedbackStore";
 import type { Point2, Wall } from "@/types/project";
 import {
+  closestWall,
   dist,
   metersToPx,
   mid,
   pointOnWall,
   polygonAreaM2,
+  polygonCentroid,
   wallAngle,
   wallNormal,
 } from "@/lib/geometry/math";
@@ -31,6 +34,7 @@ import { useBackgroundImage } from "@/hooks/useBackgroundImage";
 import { KonvaSymbol } from "@/components/symbols/KonvaSymbol";
 import { registerPlanStage } from "@/lib/planStage";
 import { loadBackgroundFile } from "@/lib/background";
+import { CalibrationModal } from "@/components/editor/CalibrationModal";
 
 const WORLD = { w: 4000, h: 3000 };
 
@@ -151,6 +155,115 @@ export function PlanCanvas() {
     symbols.length === 0 &&
     !floor?.background;
 
+  const fitPlan = useCallback(() => {
+    const pts: Point2[] = [
+      ...walls.flatMap((w) => [w.start, w.end]),
+      ...rooms.flatMap((r) => r.points),
+      ...symbols.map((s) => s.position),
+    ];
+    if (floor?.background) {
+      pts.push(
+        { x: 0, y: 0 },
+        {
+          x: floor.background.widthPx,
+          y: floor.background.heightPx,
+        }
+      );
+    }
+    if (!pts.length) {
+      setScale(1);
+      setStagePos({ x: 40, y: 40 });
+      return;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    const pad = 48;
+    const bw = Math.max(80, maxX - minX);
+    const bh = Math.max(80, maxY - minY);
+    const sx = (size.w - pad * 2) / bw;
+    const sy = (size.h - pad * 2) / bh;
+    const next = Math.min(4, Math.max(0.2, Math.min(sx, sy)));
+    setScale(next);
+    setStagePos({
+      x: pad - minX * next + (size.w - pad * 2 - bw * next) / 2,
+      y: pad - minY * next + (size.h - pad * 2 - bh * next) / 2,
+    });
+  }, [walls, rooms, symbols, floor?.background, size.w, size.h]);
+
+  useEffect(() => {
+    const onFit = () => fitPlan();
+    window.addEventListener("elektrocad:fit-plan", onFit);
+    return () => window.removeEventListener("elektrocad:fit-plan", onFit);
+  }, [fitPlan]);
+
+  useEffect(() => {
+    const onFitSel = () => {
+      const ids = new Set(useProjectStore.getState().ui.selectedIds);
+      const pts = symbols
+        .filter((s) => ids.has(s.id))
+        .map((s) => s.position);
+      if (pts.length < 1) return;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const p of pts) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+      const pad = 64;
+      const bw = Math.max(40, maxX - minX + 40);
+      const bh = Math.max(40, maxY - minY + 40);
+      const sx = (size.w - pad * 2) / bw;
+      const sy = (size.h - pad * 2) / bh;
+      const next = Math.min(4, Math.max(0.35, Math.min(sx, sy)));
+      setScale(next);
+      setStagePos({
+        x: pad - minX * next + (size.w - pad * 2 - bw * next) / 2,
+        y: pad - minY * next + (size.h - pad * 2 - bh * next) / 2,
+      });
+    };
+    window.addEventListener("elektrocad:fit-selection", onFitSel);
+    return () =>
+      window.removeEventListener("elektrocad:fit-selection", onFitSel);
+  }, [symbols, size.w, size.h]);
+
+  /** Messstrecke groß und mittig – damit man die Länge sehen kann */
+  useEffect(() => {
+    const onFitCal = () => {
+      const c = floor?.background?.calibration;
+      if (!c?.pointA || !c?.pointB) return;
+      const minX = Math.min(c.pointA.x, c.pointB.x);
+      const minY = Math.min(c.pointA.y, c.pointB.y);
+      const maxX = Math.max(c.pointA.x, c.pointB.x);
+      const maxY = Math.max(c.pointA.y, c.pointB.y);
+      const pad = 80;
+      const bw = Math.max(120, maxX - minX + 80);
+      const bh = Math.max(120, maxY - minY + 80);
+      const sx = (size.w - pad * 2) / bw;
+      const sy = (size.h - pad * 2) / bh;
+      const next = Math.min(6, Math.max(0.4, Math.min(sx, sy)));
+      setScale(next);
+      setStagePos({
+        x: pad - minX * next + (size.w - pad * 2 - bw * next) / 2,
+        y: pad - minY * next + (size.h - pad * 2 - bh * next) / 2 - 40,
+      });
+    };
+    window.addEventListener("elektrocad:fit-calibration", onFitCal);
+    return () =>
+      window.removeEventListener("elektrocad:fit-calibration", onFitCal);
+  }, [floor?.background?.calibration, size.w, size.h]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -238,12 +351,19 @@ export function PlanCanvas() {
 
   const finishRoom = useCallback(() => {
     if (roomDraft.length >= 3) {
-      const name = window.prompt("Raumname", "Raum")?.trim() || "Raum";
+      const n =
+        useProjectStore
+          .getState()
+          .rooms.filter((r) => r.floorId === activeFloorId).length + 1;
+      const name = `Raum ${n}`;
       addRoom(roomDraft, name, { createWalls: true });
+      useFeedbackStore
+        .getState()
+        .showToast(`${name} angelegt · Name tippen oder Chip wählen`);
     }
     setRoomDraft([]);
     setRoomCursor(null);
-  }, [roomDraft, addRoom]);
+  }, [roomDraft, addRoom, activeFloorId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -260,10 +380,19 @@ export function PlanCanvas() {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
+        const calNow =
+          useProjectStore.getState().getActiveFloor()?.background
+            ?.calibration;
+        if (calNow?.pointA || calNow?.pointB) {
+          useProjectStore.getState().clearCalibration();
+          return;
+        }
         if (draftStart || roomDraft.length > 0 || connectFrom) {
           cancelDrawing();
         } else if (ui.tool !== "select") {
           setTool("select");
+        } else if (ui.selectedIds.length) {
+          setSelectedIds([]);
         }
         return;
       }
@@ -431,7 +560,18 @@ export function PlanCanvas() {
     lastClickRef.current = now;
 
     if (ui.tool === "calibrate") {
-      setCalibrationPoint(world);
+      const calState = floor?.background?.calibration;
+      // Modal offen: keine neuen Punkte (sonst Reset per Fehlklick)
+      if (calState?.pointA && calState?.pointB) return;
+      // Wie Wand: 1. Punkt an Endpunkte, 2. Punkt Winkel-Snap + Endpunkte
+      if (calState?.pointA && !calState.pointB) {
+        setCalibrationPoint(refinePoint(calState.pointA, world));
+      } else {
+        setCalibrationPoint(previewSnapPoint(null, world));
+        useFeedbackStore
+          .getState()
+          .showToast("Punkt 1 ok · jetzt Ende der bekannten Länge tippen");
+      }
       return;
     }
 
@@ -447,7 +587,17 @@ export function PlanCanvas() {
       } else {
         const end = refinePoint(draftStart, world);
         if (dist(draftStart, end) >= 4) {
+          const wasFirstWall =
+            useProjectStore.getState().walls.filter(
+              (w) => w.floorId === activeFloorId
+            ).length === 0;
           addWall(draftStart, end);
+          if (wasFirstWall) {
+            const lenM = dist(draftStart, end) * mpp;
+            useFeedbackStore
+              .getState()
+              .showToast(`Erste Wand · ${lenM.toFixed(2)} m`);
+          }
           // Kettenmodus: weiterzeichnen ab Endpunkt
           setDraftStart(end);
           setDraftCurrent(end);
@@ -464,7 +614,24 @@ export function PlanCanvas() {
         setTool("select");
         return;
       }
-      addOpening(ui.tool, world);
+      const created = addOpening(ui.tool, world);
+      if (!created) {
+        useFeedbackStore
+          .getState()
+          .showToast(
+            walls.length
+              ? "Näher an eine Wand tippen"
+              : "Zuerst eine Wand zeichnen"
+          );
+      } else {
+        useFeedbackStore
+          .getState()
+          .showToast(
+            created.kind === "door"
+              ? "Tür gesetzt · Anschlag rechts änderbar"
+              : "Fenster gesetzt"
+          );
+      }
       return;
     }
 
@@ -476,7 +643,10 @@ export function PlanCanvas() {
         setTool("select");
         return;
       }
-      placeSymbol(ui.selectedSymbolKind, world);
+      const kind = ui.selectedSymbolKind;
+      placeSymbol(kind, world);
+      const def = getSymbolDef(kind);
+      useFeedbackStore.getState().showToast(`${def.label} gesetzt`);
       return;
     }
 
@@ -530,7 +700,18 @@ export function PlanCanvas() {
 
   const handlePointerMove = () => {
     const world = toWorld();
-    setPointer(world);
+    const calState = floor?.background?.calibration;
+    if (
+      ui.tool === "calibrate" &&
+      calState?.pointA &&
+      !calState.pointB
+    ) {
+      setPointer(refinePoint(calState.pointA, world));
+    } else if (ui.tool === "calibrate") {
+      setPointer(previewSnapPoint(null, world));
+    } else {
+      setPointer(world);
+    }
     if (ui.tool === "wall" && draftStart) {
       setDraftCurrent(refinePoint(draftStart, world));
     }
@@ -680,22 +861,22 @@ export function PlanCanvas() {
         return draftStart
           ? shiftFreehand
             ? `Freizeichnen ${draftAngleDeg?.toFixed(0) ?? "–"}° · ${draftLenM?.toFixed(2) ?? "–"} m · Shift los = Snap`
-            : `Snap ${ui.angleSnapDegrees}° · ${draftAngleDeg?.toFixed(0) ?? "–"}° / ${draftLenM?.toFixed(2) ?? "–"} m · Shift = frei · Enter beendet`
-          : "Punkt setzen · Winkel rasten ein (Shift = frei)";
+            : `Snap ${ui.angleSnapDegrees}° · ${draftAngleDeg?.toFixed(0) ?? "–"}° / ${draftLenM?.toFixed(2) ?? "–"} m · ${(ui.wallThickness * 100).toFixed(0)} cm · Enter beendet`
+          : `Punkt setzen · ${(ui.wallThickness * 100).toFixed(0)} cm Stärke · Winkel-Snap (Shift = frei)`;
       case "room":
         return roomDraft.length >= 3
           ? `Segment ${roomSegLenM?.toFixed(2) ?? "–"} m · ${roomSegAngle?.toFixed(0) ?? "–"}° · Doppelklick/Enter/Start = schließen · erzeugt auch Wände`
           : "Raum-Ecken setzen (Winkel-Snap wie Wand) · Shift = frei · Esc raus";
       case "calibrate":
         return !cal?.pointA
-          ? "Maßstab: Punkt 1 auf bekannter Strecke (z. B. 5-m-Wand)"
+          ? "Maßstab: Punkt 1 auf bekannte Strecke (z. B. Außenwand)"
           : !cal?.pointB
-            ? "Messlinie folgt dem Cursor – Punkt 2 setzen"
-            : "Messlinie steht · rechts die echte Länge in Metern übernehmen";
+            ? `Messlinie mit ${ui.angleSnapDegrees}°-Snap · Shift = frei · Punkt 2 setzen`
+            : "Länge im Dialog eingeben (Meter) und übernehmen";
       case "door":
-        return "Auf eine Wand klicken";
+        return "Tür an Wand setzen · orangene Vorschau zeigt Treffer";
       case "window":
-        return "Auf eine Wand klicken";
+        return "Fenster an Wand setzen · orangene Vorschau zeigt Treffer";
       case "symbol":
         return ui.selectedSymbolKind
           ? `${getSymbolDef(ui.selectedSymbolKind).label} – mehrfach setzen, Esc beendet`
@@ -769,11 +950,10 @@ export function PlanCanvas() {
         <Layer>
           {rooms.map((r) => {
             const flat = r.points.flatMap((p) => [p.x, p.y]);
-            const c = mid(
-              r.points[0],
-              r.points[Math.floor(r.points.length / 2)] ?? r.points[0]
-            );
+            const c = polygonCentroid(r.points);
             const selected = ui.selectedIds.includes(r.id);
+            const inv = 1 / Math.max(0.2, scale);
+            const labelW = 110 * inv;
             return (
               <Group
                 key={r.id}
@@ -789,26 +969,28 @@ export function PlanCanvas() {
                       : "rgba(37,99,235,0.14)"
                   }
                   stroke={selected ? "#e08a1e" : "#3b82f6"}
-                  strokeWidth={1.5}
+                  strokeWidth={1.5 * inv}
                 />
                 <Text
-                  x={c.x - 48}
-                  y={c.y - 14}
-                  width={96}
+                  x={c.x - labelW / 2}
+                  y={c.y - 16 * inv}
+                  width={labelW}
                   align="center"
                   text={r.name}
-                  fontSize={13}
+                  fontSize={13 * inv}
                   fontStyle="bold"
                   fill="#1a2332"
+                  listening={false}
                 />
                 <Text
-                  x={c.x - 48}
-                  y={c.y + 2}
-                  width={96}
+                  x={c.x - labelW / 2}
+                  y={c.y + 2 * inv}
+                  width={labelW}
                   align="center"
                   text={`${polygonAreaM2(r.points, mpp).toFixed(1)} m²`}
-                  fontSize={11}
+                  fontSize={11 * inv}
                   fill="#5b6b7c"
+                  listening={false}
                 />
               </Group>
             );
@@ -822,6 +1004,8 @@ export function PlanCanvas() {
               wall={w}
               mpp={mpp}
               selected={ui.selectedIds.includes(w.id)}
+              showDim={ui.selectedIds.includes(w.id) || scale >= 0.55}
+              invScale={1 / Math.max(0.2, scale)}
               onSelect={() => setSelectedIds([w.id])}
             />
           ))}
@@ -836,6 +1020,7 @@ export function PlanCanvas() {
                 wall={wall}
                 mpp={mpp}
                 selected={ui.selectedIds.includes(o.id)}
+                invScale={1 / Math.max(0.2, scale)}
                 onSelect={() => {
                   setSelectedIds([o.id]);
                   if (ui.tool === "door" || ui.tool === "window") {
@@ -856,6 +1041,23 @@ export function PlanCanvas() {
               c.estimatedLengthM ??
               dist(a.position, b.position) * mpp * 1.15;
             const selectedWire = ui.selectedIds.includes(c.id);
+            const sharedCircuit =
+              a.circuitId?.trim() &&
+              a.circuitId.trim() === b.circuitId?.trim()
+                ? a.circuitId.trim()
+                : null;
+            const cableHint =
+              a.cableType?.trim() &&
+              a.cableType.trim() === b.cableType?.trim()
+                ? a.cableType.trim()
+                : null;
+            const label = [
+              sharedCircuit,
+              `${lenM.toFixed(1)} m`,
+              cableHint && ui.mode === "pro" ? cableHint : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
             return (
               <Group
                 key={c.id}
@@ -881,11 +1083,11 @@ export function PlanCanvas() {
                   hitStrokeWidth={12}
                 />
                 <Text
-                  x={midX - 22}
+                  x={midX - 48}
                   y={midY - 8}
-                  width={44}
+                  width={96}
                   align="center"
-                  text={`${lenM.toFixed(1)} m`}
+                  text={label}
                   fontSize={9}
                   fill="#475569"
                   listening={false}
@@ -895,7 +1097,12 @@ export function PlanCanvas() {
           })}
 
           {symbols
-            .filter((s) => ui.showFurniture || !getSymbolDef(s.kind).isFurniture)
+            .filter((s) => {
+              const def = getSymbolDef(s.kind);
+              if (!ui.showFurniture && def.isFurniture) return false;
+              if (!ui.showSanitary && def.category === "sanitary") return false;
+              return true;
+            })
             .map((s) => {
               const selected = ui.selectedIds.includes(s.id);
               return (
@@ -909,10 +1116,17 @@ export function PlanCanvas() {
                   onClick={(e) => {
                     e.cancelBubble = true;
                     if (ui.tool === "connection") {
-                      if (!connectFrom) setConnectFrom(s.id);
-                      else {
+                      if (!connectFrom) {
+                        setConnectFrom(s.id);
+                        useFeedbackStore
+                          .getState()
+                          .showToast("Zweites Symbol antippen");
+                      } else {
                         addConnection(connectFrom, s.id);
                         setConnectFrom(null);
+                        useFeedbackStore
+                          .getState()
+                          .showToast("Verbindung gesetzt");
                       }
                       return;
                     }
@@ -972,6 +1186,38 @@ export function PlanCanvas() {
               );
             })}
 
+          {/* Fangpunkte an Wandenden (Wand / Raum / Maßstab) */}
+          {(ui.tool === "wall" ||
+            ui.tool === "room" ||
+            ui.tool === "calibrate") &&
+            pointer &&
+            (() => {
+              const inv = 1 / Math.max(0.2, scale);
+              const thresh = 28 * inv;
+              const eps: Point2[] = [];
+              for (const w of walls) {
+                for (const ep of [w.start, w.end]) {
+                  if (dist(pointer, ep) < thresh) eps.push(ep);
+                }
+              }
+              if (!eps.length) return null;
+              return (
+                <Group listening={false}>
+                  {eps.map((ep, i) => (
+                    <Circle
+                      key={`snap-${i}-${ep.x}-${ep.y}`}
+                      x={ep.x}
+                      y={ep.y}
+                      radius={6 * inv}
+                      stroke="#2563eb"
+                      strokeWidth={2 * inv}
+                      fill="rgba(37,99,235,0.15)"
+                    />
+                  ))}
+                </Group>
+              );
+            })()}
+
           {draftStart && draftCurrent && (
             <Group>
               {/* Winkel-Hilfslinien (Snap-Schritte) */}
@@ -1028,6 +1274,7 @@ export function PlanCanvas() {
                   b={draftCurrent}
                   text={`${draftLenM.toFixed(2)} m · ${draftAngleDeg?.toFixed(0)}°`}
                   accent
+                  invScale={1 / Math.max(0.2, scale)}
                 />
               )}
             </Group>
@@ -1110,57 +1357,170 @@ export function PlanCanvas() {
                     b={roomCursor}
                     text={`${roomSegLenM.toFixed(2)} m · ${roomSegAngle?.toFixed(0)}°`}
                     accent
+                    invScale={1 / Math.max(0.2, scale)}
                   />
                 )}
             </Group>
           )}
 
-          {/* Maßstab: Linie sofort ab Punkt 1, bleibt bis Übernehmen/Reset */}
-          {cal?.pointA && (
-            <Group>
-              <Circle
-                x={cal.pointA.x}
-                y={cal.pointA.y}
-                radius={6}
-                fill="#e08a1e"
-              />
-              <Line
-                points={[
-                  cal.pointA.x,
-                  cal.pointA.y,
-                  (cal.pointB ?? pointer ?? cal.pointA).x,
-                  (cal.pointB ?? pointer ?? cal.pointA).y,
-                ]}
-                stroke="#e08a1e"
-                strokeWidth={2.5}
-                dash={cal.pointB ? undefined : [8, 4]}
-              />
-              {(cal.pointB || pointer) && (
-                <Circle
-                  x={(cal.pointB ?? pointer)!.x}
-                  y={(cal.pointB ?? pointer)!.y}
-                  radius={6}
-                  fill="#e08a1e"
-                />
-              )}
-              {cal.pointB && (
-                <DimLabel
-                  a={cal.pointA}
-                  b={cal.pointB}
-                  text="Messstrecke → Länge rechts eingeben"
-                  accent
-                />
-              )}
-              {!cal.pointB && pointer && (
-                <DimLabel
-                  a={cal.pointA}
-                  b={pointer}
-                  text="Punkt 2 setzen…"
-                  accent
-                />
-              )}
-            </Group>
-          )}
+          {/* Maßstab: dicke Linie + screen-feste Beschriftung */}
+          {cal?.pointA &&
+            (() => {
+              const a0 = cal.pointA;
+              const b0 = cal.pointB ?? pointer ?? a0;
+              const inv = 1 / Math.max(0.2, scale);
+              const pxLen = dist(a0, b0);
+              const guideLen = 180 * inv;
+              return (
+                <Group>
+                  {!cal.pointB &&
+                    !shiftFreehand &&
+                    ui.angleSnapEnabled &&
+                    Array.from(
+                      { length: Math.round(360 / ui.angleSnapDegrees) },
+                      (_, i) => {
+                        const ang =
+                          (i * ui.angleSnapDegrees * Math.PI) / 180;
+                        return (
+                          <Line
+                            key={`cg-${i}`}
+                            points={[
+                              a0.x,
+                              a0.y,
+                              a0.x + Math.cos(ang) * guideLen,
+                              a0.y + Math.sin(ang) * guideLen,
+                            ]}
+                            stroke="#94a3b8"
+                            strokeWidth={0.6 * inv}
+                            opacity={0.35}
+                            listening={false}
+                          />
+                        );
+                      }
+                    )}
+                  <Circle
+                    x={a0.x}
+                    y={a0.y}
+                    radius={8 * inv}
+                    fill="#e08a1e"
+                    stroke="#fff"
+                    strokeWidth={2 * inv}
+                  />
+                  <Line
+                    points={[a0.x, a0.y, b0.x, b0.y]}
+                    stroke="#e08a1e"
+                    strokeWidth={4 * inv}
+                    dash={
+                      cal.pointB
+                        ? undefined
+                        : shiftFreehand
+                          ? [4 * inv, 6 * inv]
+                          : [10 * inv, 6 * inv]
+                    }
+                  />
+                  {(cal.pointB || pointer) && (
+                    <Circle
+                      x={b0.x}
+                      y={b0.y}
+                      radius={8 * inv}
+                      fill="#e08a1e"
+                      stroke="#fff"
+                      strokeWidth={2 * inv}
+                    />
+                  )}
+                  {cal.pointB && (
+                    <DimLabel
+                      a={a0}
+                      b={cal.pointB}
+                      text={`${Math.round(pxLen)} px · Länge eingeben ↓`}
+                      accent
+                      invScale={inv}
+                    />
+                  )}
+                  {!cal.pointB && pointer && (
+                    <DimLabel
+                      a={a0}
+                      b={pointer}
+                      text={`${Math.round(pxLen)} px · ${((Math.atan2(pointer.y - a0.y, pointer.x - a0.x) * 180) / Math.PI).toFixed(0)}°`}
+                      accent
+                      invScale={inv}
+                    />
+                  )}
+                </Group>
+              );
+            })()}
+
+          {/* Tür/Fenster-Vorschau an nächster Wand */}
+          {(ui.tool === "door" || ui.tool === "window") &&
+            pointer &&
+            (() => {
+              const coarse =
+                typeof window !== "undefined" &&
+                window.matchMedia("(pointer: coarse)").matches;
+              const hit = closestWall(walls, pointer, coarse ? 56 : 40);
+              if (!hit) return null;
+              const widthM = ui.tool === "door" ? 0.9 : 1.2;
+              const widthPx = metersToPx(widthM, mpp);
+              const ang = wallAngle(hit.wall);
+              return (
+                <Group
+                  x={hit.point.x}
+                  y={hit.point.y}
+                  rotation={(ang * 180) / Math.PI}
+                  listening={false}
+                  opacity={0.55}
+                >
+                  <Rect
+                    x={-widthPx / 2}
+                    y={-6}
+                    width={widthPx}
+                    height={12}
+                    fill={ui.tool === "door" ? "#f7f9fc" : "#b8d4f0"}
+                    stroke="#e08a1e"
+                    strokeWidth={1.5}
+                    dash={[4, 3]}
+                  />
+                </Group>
+              );
+            })()}
+
+          {/* Symbol-Vorschau (Snap) */}
+          {ui.tool === "symbol" &&
+            ui.selectedSymbolKind &&
+            pointer &&
+            (() => {
+              const snap = snapSymbolPlacement(
+                ui.selectedSymbolKind,
+                pointer,
+                walls,
+                mpp,
+                undefined,
+                { freehand: shiftFreehand }
+              );
+              return (
+                <Group
+                  x={snap.position.x}
+                  y={snap.position.y}
+                  rotation={
+                    snap.rotation != null
+                      ? (snap.rotation * 180) / Math.PI
+                      : 0
+                  }
+                  opacity={0.45}
+                  listening={false}
+                >
+                  <KonvaSymbol
+                    kind={ui.selectedSymbolKind}
+                    metersPerPixel={mpp}
+                    color={
+                      snap.snapped
+                        ? getSymbolDef(ui.selectedSymbolKind).color
+                        : "#94a3b8"
+                    }
+                  />
+                </Group>
+              );
+            })()}
 
           {/* Zuordnung: Gummiband vom ersten Symbol */}
           {ui.tool === "connection" && connectFrom && pointer && (() => {
@@ -1199,6 +1559,8 @@ export function PlanCanvas() {
         </Layer>
       </Stage>
 
+      <CalibrationModal />
+
       {isEmptyFloor && ui.tool === "select" && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
           <div className="pointer-events-auto w-full max-w-md rounded-xl border border-line bg-panel/95 p-5 shadow-lg backdrop-blur-sm">
@@ -1206,7 +1568,8 @@ export function PlanCanvas() {
               Plan starten
             </h2>
             <p className="mt-1 text-sm text-muted">
-              Grundriss laden oder direkt Wände und Räume zeichnen.
+              Am schnellsten: Grundriss laden → 2 Punkte Maßstab → Wand
+              zeichnen. Oder ohne Bild direkt zeichnen.
             </p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <button
@@ -1248,8 +1611,15 @@ export function PlanCanvas() {
                   const bg = await loadBackgroundFile(file);
                   setBackground(activeFloorId, bg);
                   setTool("calibrate");
+                  useFeedbackStore
+                    .getState()
+                    .showToast(
+                      "Grundriss geladen · 2 Punkte für Maßstab setzen"
+                    );
                 } catch {
-                  /* ignore invalid files */
+                  useFeedbackStore
+                    .getState()
+                    .showToast("Datei konnte nicht geladen werden");
                 }
               }}
             />
@@ -1263,10 +1633,51 @@ export function PlanCanvas() {
           {shiftFreehand
             ? " Freizeichnen (Shift)"
             : ` Snap ${ui.angleSnapDegrees}°`}
-          {floor?.background?.metersPerPixel == null
-            ? " · Maßstab fehlt"
-            : ""}
         </div>
+        {floor?.background && floor.background.metersPerPixel == null && (
+          <button
+            type="button"
+            className="pointer-events-auto rounded-md bg-accent-soft px-2.5 py-1.5 text-[11px] font-semibold text-accent-ink shadow-sm"
+            title="Zwei Punkte auf bekannte Länge setzen"
+            onClick={() => setTool("calibrate")}
+          >
+            Maßstab setzen
+          </button>
+        )}
+        <button
+          type="button"
+          className="pointer-events-auto rounded-md bg-panel px-2.5 py-1.5 text-[11px] font-semibold text-ink shadow-sm"
+          title="Rauszoomen"
+          onClick={() => {
+            const center = { x: size.w / 2, y: size.h / 2 };
+            const next = zoomAt(center, scale, scale / 1.25, stagePos);
+            setScale(next.scale);
+            setStagePos(next.pos);
+          }}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          className="pointer-events-auto rounded-md bg-panel px-2.5 py-1.5 text-[11px] font-semibold text-ink shadow-sm"
+          title="Reinzoomen"
+          onClick={() => {
+            const center = { x: size.w / 2, y: size.h / 2 };
+            const next = zoomAt(center, scale, scale * 1.25, stagePos);
+            setScale(next.scale);
+            setStagePos(next.pos);
+          }}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="pointer-events-auto rounded-md bg-panel px-2.5 py-1.5 text-[11px] font-semibold text-ink shadow-sm"
+          title="Zoom so, dass alles sichtbar ist (0 / Home) – zeichnet nichts"
+          onClick={fitPlan}
+        >
+          Einpassen
+        </button>
         <div className="max-w-xl rounded-md bg-ink px-2.5 py-1.5 text-[11px] font-medium text-panel shadow-sm">
           {hint}
         </div>
@@ -1310,36 +1721,41 @@ function DimLabel({
   b,
   text,
   accent,
+  invScale = 1,
 }: {
   a: Point2;
   b: Point2;
   text: string;
   accent?: boolean;
+  /** 1/zoom – hält Schrift bei starkem Zoom/Out lesbar */
+  invScale?: number;
 }) {
   const c = mid(a, b);
   const ang = Math.atan2(b.y - a.y, b.x - a.x);
   let deg = (ang * 180) / Math.PI;
-  // Text lesbar halten
   if (deg > 90 || deg < -90) deg += 180;
+  const s = invScale;
+  const w = Math.max(96, text.length * 7) * s;
+  const h = 18 * s;
   return (
     <Group x={c.x} y={c.y} rotation={deg} listening={false}>
       <Rect
-        x={-40}
-        y={-22}
-        width={80}
-        height={16}
+        x={-w / 2}
+        y={-28 * s}
+        width={w}
+        height={h}
         fill={accent ? "#fff4e5" : "#ffffff"}
         stroke={accent ? "#e08a1e" : "#c5d0dc"}
-        strokeWidth={1}
-        cornerRadius={3}
+        strokeWidth={1.2 * s}
+        cornerRadius={3 * s}
       />
       <Text
-        x={-40}
-        y={-20}
-        width={80}
+        x={-w / 2}
+        y={-25 * s}
+        width={w}
         align="center"
         text={text}
-        fontSize={10}
+        fontSize={11 * s}
         fontStyle="bold"
         fill="#1a2332"
       />
@@ -1351,11 +1767,15 @@ function WallShape({
   wall,
   mpp,
   selected,
+  showDim,
+  invScale = 1,
   onSelect,
 }: {
   wall: Wall;
   mpp: number;
   selected: boolean;
+  showDim?: boolean;
+  invScale?: number;
   onSelect: () => void;
 }) {
   const thicknessPx = Math.max(2, metersToPx(wall.thickness, mpp));
@@ -1378,6 +1798,7 @@ function WallShape({
     y: wall.end.y - n.y * half,
   };
   const lenM = dist(wall.start, wall.end) * mpp;
+  const epR = 2.5 * invScale;
 
   return (
     <Group onClick={onSelect} onTap={onSelect}>
@@ -1388,24 +1809,26 @@ function WallShape({
         stroke={selected ? "#e08a1e" : "#1a2332"}
         strokeWidth={selected ? 2 : 1}
       />
-      <DimLabel
-        a={wall.start}
-        b={wall.end}
-        text={`${lenM.toFixed(2)} m`}
-        accent={selected}
-      />
-      {/* Endpunkte für Snapping-Hinweis */}
+      {showDim && (
+        <DimLabel
+          a={wall.start}
+          b={wall.end}
+          text={`${lenM.toFixed(2)} m`}
+          accent={selected}
+          invScale={invScale}
+        />
+      )}
       <Circle
         x={wall.start.x}
         y={wall.start.y}
-        radius={2.5}
+        radius={epR}
         fill="#94a3b8"
         listening={false}
       />
       <Circle
         x={wall.end.x}
         y={wall.end.y}
-        radius={2.5}
+        radius={epR}
         fill="#94a3b8"
         listening={false}
       />
@@ -1418,12 +1841,14 @@ function OpeningShape({
   wall,
   mpp,
   selected,
+  invScale = 1,
   onSelect,
 }: {
   opening: import("@/types/project").Opening;
   wall: Wall;
   mpp: number;
   selected: boolean;
+  invScale?: number;
   onSelect: () => void;
 }) {
   const ang = wallAngle(wall);
@@ -1431,6 +1856,22 @@ function OpeningShape({
   const widthPx = metersToPx(opening.width, mpp);
   const thicknessPx = Math.max(2, metersToPx(wall.thickness, mpp));
   const side = opening.opensInward ? 1 : -1;
+  const label = `${opening.width.toFixed(2)} m`;
+
+  const widthTag =
+    selected || invScale < 1.2 ? (
+      <Text
+        x={-40 * invScale}
+        y={thicknessPx / 2 + 4 * invScale}
+        width={80 * invScale}
+        align="center"
+        text={label}
+        fontSize={10 * invScale}
+        fontStyle="bold"
+        fill="#1a2332"
+        listening={false}
+      />
+    ) : null;
 
   if (opening.kind === "window") {
     return (
@@ -1462,6 +1903,7 @@ function OpeningShape({
           stroke="#1a2332"
           strokeWidth={1}
         />
+        {widthTag}
       </Group>
     );
   }
@@ -1520,6 +1962,7 @@ function OpeningShape({
         strokeWidth={1}
         dash={[3, 3]}
       />
+      {widthTag}
     </Group>
   );
 }

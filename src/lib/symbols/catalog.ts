@@ -32,6 +32,10 @@ export const SYMBOL_CATALOG: SymbolDef[] = [
   { kind: "outlet_floor", category: "outlet", label: "Boden-SD", labelPro: "Bodendose", defaultHeight: 0, wallBound: false, color: "#1e40af" },
   { kind: "outlet_switched", category: "outlet", label: "schaltbar", labelPro: "SD schaltbar", defaultHeight: DEFAULT_HEIGHTS.outlet, wallBound: true, color: "#1d4ed8" },
   { kind: "outlet_usb", category: "outlet", label: "USB-SD", labelPro: "SCHUKO+USB", defaultHeight: DEFAULT_HEIGHTS.outlet, wallBound: true, color: "#1d4ed8" },
+  { kind: "outlet_16a", category: "outlet", label: "16A SD", labelPro: "SCHUKO 16A", defaultHeight: DEFAULT_HEIGHTS.outlet, wallBound: true, color: "#1d4ed8" },
+  { kind: "outlet_underfloor", category: "outlet", label: "Fußboden-SD", labelPro: "Unterflurdose", defaultHeight: 0, wallBound: false, color: "#1e40af" },
+  { kind: "outlet_outdoor", category: "outlet", label: "Außen-SD", labelPro: "SCHUKO IP44 außen", defaultHeight: DEFAULT_HEIGHTS.outlet, wallBound: true, color: "#0369a1" },
+  { kind: "outlet_child_safe", category: "outlet", label: "Kinderschutz", labelPro: "SCHUKO Kinderschutz", defaultHeight: DEFAULT_HEIGHTS.outlet, wallBound: true, color: "#1d4ed8" },
 
   // —— Schalter (Orange/Braun) ——
   { kind: "switch_off", category: "switch", label: "Aus", labelPro: "Ausschalter", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#c2410c" },
@@ -41,6 +45,10 @@ export const SYMBOL_CATALOG: SymbolDef[] = [
   { kind: "switch_push", category: "switch", label: "Taster", labelPro: "Taster", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#ea580c" },
   { kind: "switch_dimmer", category: "switch", label: "Dimmer", labelPro: "Dimmer", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#a16207" },
   { kind: "shutter_switch", category: "switch", label: "Jalousie", labelPro: "Jalousieschalter", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#57534e" },
+  { kind: "switch_hotel", category: "switch", label: "Hotelschalter", labelPro: "Kartenschalter", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#c2410c" },
+  { kind: "switch_double_push", category: "switch", label: "Doppeltaster", labelPro: "Doppeltaster", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#ea580c" },
+  { kind: "switch_pilot", category: "switch", label: "mit Lampe", labelPro: "Schalter mit Kontrolllampe", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#c2410c" },
+  { kind: "knx_push", category: "switch", label: "KNX-Taster", labelPro: "KNX / Bus-Taster", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#0f766e" },
 
   // —— Licht (Gold) ——
   { kind: "ceiling_outlet", category: "light", label: "Deckenauslass", labelPro: "LA Decke", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#ca8a04" },
@@ -49,32 +57,50 @@ export const SYMBOL_CATALOG: SymbolDef[] = [
   { kind: "light_led_strip", category: "light", label: "LED-Strip", labelPro: "LED-Band", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#eab308" },
   { kind: "light_outdoor", category: "light", label: "Außenleuchte", labelPro: "LA außen IP44", defaultHeight: DEFAULT_HEIGHTS.wallOutlet, wallBound: true, color: "#ca8a04" },
   { kind: "emergency_light", category: "light", label: "Notlicht", labelPro: "Sicherheitsleuchte", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#b45309" },
+  { kind: "light_pendant", category: "light", label: "Pendelleuchte", labelPro: "Pendel / Hänge-LA", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#ca8a04" },
+  { kind: "light_wall_sconce", category: "light", label: "Wandleuchte", labelPro: "Wandlampe", defaultHeight: DEFAULT_HEIGHTS.wallOutlet, wallBound: true, color: "#ca8a04" },
+  { kind: "light_garden", category: "light", label: "Gartenleuchte", labelPro: "Poller / Garten IP65", defaultHeight: 0.8, wallBound: false, color: "#a16207" },
 
   // —— Daten / AV ——
   { kind: "rj45", category: "data", label: "RJ45", labelPro: "Daten Cat.6A", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#15803d" },
+  { kind: "rj45_double", category: "data", label: "RJ45 2×", labelPro: "Daten 2× Cat.6A", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#15803d" },
   { kind: "tv_sat", category: "av", label: "TV/SAT", labelPro: "Antenne", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#7c3aed", sizeM: { w: 0.08, d: 0.06, h: 0.08 } },
   { kind: "phone", category: "data", label: "Telefon", labelPro: "Multimedia", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#15803d" },
   { kind: "fiber", category: "data", label: "Glasfaser", labelPro: "LWL / FTTH", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#166534" },
   { kind: "speaker", category: "av", label: "Lautsprecher", labelPro: "Multiroom / LS", defaultHeight: DEFAULT_HEIGHTS.wallOutlet, wallBound: true, color: "#7c3aed", sizeM: { w: 0.22, d: 0.14, h: 0.3 } },
+  { kind: "hdmi_wall", category: "av", label: "HDMI", labelPro: "HDMI-Wanddose", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#7c3aed" },
 
   // —— Steuerung ——
   { kind: "wireless_actor", category: "control", label: "Funk-Aktor", labelPro: "Shelly/Eltako/KNX", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#0891b2" },
   { kind: "doorbell", category: "control", label: "Klingel", labelPro: "Klingeltaster", defaultHeight: 1.3, wallBound: true, color: "#0891b2" },
+  { kind: "doorbell_outdoor", category: "control", label: "Türklingel", labelPro: "Klingel außen", defaultHeight: 1.3, wallBound: true, color: "#0891b2" },
   { kind: "intercom", category: "control", label: "Sprechanlage", labelPro: "Türstation innen", defaultHeight: 1.45, wallBound: true, color: "#0891b2" },
   { kind: "thermostat", category: "control", label: "Thermostat", labelPro: "Raumthermostat", defaultHeight: DEFAULT_HEIGHTS.switch, wallBound: true, color: "#0e7490" },
+  { kind: "presence_sensor", category: "control", label: "Präsenz", labelPro: "Präsenzmelder", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#0e7490" },
 
   // —— Sicherheit ——
   { kind: "motion_sensor", category: "safety", label: "BWM", labelPro: "Bewegungsmelder", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#be123c" },
   { kind: "smoke_detector", category: "safety", label: "RWM", labelPro: "Rauchwarnmelder", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#be123c" },
+  { kind: "co_detector", category: "safety", label: "CO-Melder", labelPro: "Kohlenmonoxidmelder", defaultHeight: 1.5, wallBound: true, color: "#9f1239" },
   { kind: "camera_cctv", category: "safety", label: "Kamera", labelPro: "Überwachung", defaultHeight: DEFAULT_HEIGHTS.wallOutlet, wallBound: true, color: "#9f1239" },
+  { kind: "water_leak", category: "safety", label: "Wassermelder", labelPro: "Leckagesensor", defaultHeight: 0.15, wallBound: false, color: "#be123c" },
+  { kind: "gas_detector", category: "safety", label: "Gasmelder", labelPro: "Gaswarnmelder", defaultHeight: 1.6, wallBound: true, color: "#9f1239" },
+  { kind: "alarm_siren", category: "safety", label: "Sirene", labelPro: "Alarmsirene", defaultHeight: DEFAULT_HEIGHTS.wallOutlet, wallBound: true, color: "#9f1239" },
 
   // —— Verteiler / Fest ——
   { kind: "distribution_board", category: "panel", label: "UV", labelPro: "Unterverteilung", defaultHeight: 1.4, wallBound: true, color: "#1e293b", sizeM: { w: 0.4, d: 0.15, h: 0.6 } },
+  { kind: "main_panel", category: "panel", label: "HV", labelPro: "Hauptverteilung", defaultHeight: 1.4, wallBound: true, color: "#0f172a", sizeM: { w: 0.6, d: 0.2, h: 1.2 } },
+  { kind: "meter_cabinet", category: "panel", label: "Zähler", labelPro: "Zählerschrank", defaultHeight: 1.4, wallBound: true, color: "#1e293b", sizeM: { w: 0.55, d: 0.2, h: 1.1 } },
+  { kind: "data_cabinet", category: "panel", label: "Daten-UV", labelPro: "Netzwerkverteiler / Patch", defaultHeight: 1.4, wallBound: true, color: "#14532d", sizeM: { w: 0.45, d: 0.2, h: 0.7 } },
   { kind: "junction_box", category: "panel", label: "Abzweigdose", labelPro: "AD", defaultHeight: DEFAULT_HEIGHTS.ceiling, wallBound: false, color: "#1e293b" },
+  { kind: "surge_protector", category: "panel", label: "ÜSS", labelPro: "Überspannungsschutz", defaultHeight: 1.4, wallBound: true, color: "#334155" },
+  { kind: "doorbell_chime", category: "control", label: "Gong", labelPro: "Türgong / Chime", defaultHeight: 2.1, wallBound: true, color: "#0891b2" },
   { kind: "stove_outlet", category: "appliance", label: "Herd", labelPro: "Herdanschluss 400V", defaultHeight: 0.35, wallBound: true, color: "#dc2626" },
   { kind: "water_heater", category: "appliance", label: "DLE", labelPro: "Durchlauferhitzer", defaultHeight: 1.2, wallBound: true, color: "#dc2626" },
   { kind: "ev_charger", category: "appliance", label: "Wallbox", labelPro: "Ladestation EV", defaultHeight: 1.2, wallBound: true, color: "#dc2626", sizeM: { w: 0.35, d: 0.2, h: 0.5 } },
   { kind: "pv_inverter", category: "appliance", label: "WR/PV", labelPro: "Wechselrichter", defaultHeight: 1.4, wallBound: true, color: "#b91c1c", sizeM: { w: 0.5, d: 0.2, h: 0.7 } },
+  { kind: "heat_pump", category: "appliance", label: "Wärmepumpe", labelPro: "WP-Anschluss", defaultHeight: 0.5, wallBound: false, color: "#b91c1c", sizeM: { w: 1.0, d: 0.4, h: 1.2 } },
+  { kind: "floor_heating", category: "appliance", label: "FBH", labelPro: "Fußbodenheizung", defaultHeight: 0, wallBound: false, color: "#ea580c", sizeM: { w: 0.3, d: 0.3, h: 0.08 } },
   { kind: "washing_machine", category: "appliance", label: "Waschmaschine", labelPro: "WM-Anschluss", defaultHeight: DEFAULT_HEIGHTS.countertop, wallBound: true, color: "#475569", sizeM: { w: 0.6, d: 0.6, h: 0.85 } },
   { kind: "dryer", category: "appliance", label: "Trockner", labelPro: "TR-Anschluss", defaultHeight: DEFAULT_HEIGHTS.countertop, wallBound: true, color: "#475569", sizeM: { w: 0.6, d: 0.65, h: 0.85 } },
   { kind: "dishwasher", category: "appliance", label: "Spülmaschine", labelPro: "GS-Anschluss", defaultHeight: 0.6, wallBound: true, color: "#475569", sizeM: { w: 0.6, d: 0.6, h: 0.85 } },

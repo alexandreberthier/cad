@@ -24,6 +24,33 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Einpassen (wie CAD „Zoom Extents“)
+      if (e.key === "Home") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("elektrocad:fit-plan"));
+        return;
+      }
+      if (e.code === "Digit0" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (e.shiftKey && store.ui.selectedIds.length) {
+          window.dispatchEvent(new CustomEvent("elektrocad:fit-selection"));
+        } else {
+          window.dispatchEvent(new CustomEvent("elektrocad:fit-plan"));
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        const n = store.applyMissingCircuitSuggestions();
+        useFeedbackStore
+          .getState()
+          .showToast(
+            n ? `${n} Gerät(e) automatisch zugeordnet` : "Nichts offenes"
+          );
+        return;
+      }
+
       if (e.key === "Shift" && !e.repeat) {
         store.setShiftFreehand(true);
       }
@@ -108,9 +135,22 @@ export function useKeyboardShortcuts() {
         t: "door",
         f: "window",
         r: "room",
+        m: "calibrate",
+        c: "connection",
       };
       const tool = map[e.key.toLowerCase()];
-      if (tool) store.setTool(tool);
+      if (tool) {
+        if (tool === "calibrate") {
+          const floor = store.getActiveFloor();
+          if (!floor?.background) {
+            useFeedbackStore
+              .getState()
+              .showToast("Zuerst Grundriss laden");
+            return;
+          }
+        }
+        store.setTool(tool);
+      }
     };
 
     const onKeyUp = (e: KeyboardEvent) => {

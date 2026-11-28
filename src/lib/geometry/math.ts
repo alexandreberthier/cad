@@ -8,6 +8,18 @@ export function dist(a: Point2, b: Point2): number {
   return Math.hypot(dx, dy);
 }
 
+/** Schwerpunkt eines Polygons (einfacher Mittelwert der Eckpunkte) */
+export function polygonCentroid(points: Point2[]): Point2 {
+  if (!points.length) return { x: 0, y: 0 };
+  let sx = 0;
+  let sy = 0;
+  for (const p of points) {
+    sx += p.x;
+    sy += p.y;
+  }
+  return { x: sx / points.length, y: sy / points.length };
+}
+
 export function mid(a: Point2, b: Point2): Point2 {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }

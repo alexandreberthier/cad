@@ -9,9 +9,13 @@ import { dist, polygonAreaM2 } from "@/lib/geometry/math";
 import { symbolsInDoorSwing } from "@/lib/geometry/doorClearance";
 import { ROOM_TEMPLATES } from "@/lib/roomTemplates";
 import { CircuitTree } from "./CircuitTree";
+import { BulkCircuitAssign, CircuitFields } from "./CircuitFields";
+import { PlanHealth } from "./PlanHealth";
 import { ColorField } from "./ColorField";
 import { ObjectList } from "./ObjectList";
 import { QuantityList } from "./QuantityList";
+import { WireSummary } from "./WireSummary";
+import { useFeedbackStore } from "@/store/feedbackStore";
 
 type SideTab = "edit" | "list" | "plan";
 
@@ -51,15 +55,20 @@ export function PropertiesPanel({
   const removeConnection = useProjectStore((s) => s.removeConnection);
   const setBackgroundOpacity = useProjectStore((s) => s.setBackgroundOpacity);
   const setBackgroundLocked = useProjectStore((s) => s.setBackgroundLocked);
-  const finishCalibration = useProjectStore((s) => s.finishCalibration);
   const clearCalibration = useProjectStore((s) => s.clearCalibration);
   const applyRoomTemplate = useProjectStore((s) => s.applyRoomTemplate);
   const createWallsFromRoom = useProjectStore((s) => s.createWallsFromRoom);
   const setSelectedIds = useProjectStore((s) => s.setSelectedIds);
   const rotateSelected = useProjectStore((s) => s.rotateSelected);
 
-  const [calLength, setCalLength] = useState("5");
   const [tab, setTab] = useState<SideTab>("list");
+
+  useEffect(() => {
+    const openPlan = () => setTab("plan");
+    window.addEventListener("elektrocad:open-plan-tab", openPlan);
+    return () =>
+      window.removeEventListener("elektrocad:open-plan-tab", openPlan);
+  }, []);
 
   const selectedId = ui.selectedIds[0];
   const multi = ui.selectedIds.length > 1;
@@ -130,8 +139,10 @@ export function PropertiesPanel({
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
         {tab === "list" && (
           <>
+            <PlanHealth />
             <ObjectList />
             <QuantityList />
+            <WireSummary />
             <CircuitTree />
           </>
         )}
@@ -147,6 +158,36 @@ export function PropertiesPanel({
             />
             Norm-Druck (schwarz)
           </label>
+          <label className="mt-2 flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={ui.showFurniture}
+              onChange={(e) =>
+                useProjectStore.getState().setShowFurniture(e.target.checked)
+              }
+            />
+            Möbel anzeigen
+          </label>
+          <label className="mt-2 flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={ui.showSanitary}
+              onChange={(e) =>
+                useProjectStore.getState().setShowSanitary(e.target.checked)
+              }
+            />
+            Sanitär anzeigen
+          </label>
+          <label className="mt-2 flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={ui.showHeights}
+              onChange={(e) =>
+                useProjectStore.getState().setShowHeights(e.target.checked)
+              }
+            />
+            Einbauhöhen (Profi)
+          </label>
           <p className="mt-1.5 text-[10px] leading-snug text-muted">
             DIN-Installationspläne werden üblicherweise schwarz geplottet.
             Farben sind Bildschirm-/Layer-Hilfe (wie in Profi-CAD), keine
@@ -156,51 +197,34 @@ export function PropertiesPanel({
         {(ui.tool === "calibrate" ||
           (floor?.background &&
             floor.background.calibration?.pointA)) && (
-          <Section title="Maßstab – was macht das?">
+          <Section title="Maßstab">
             <p className="text-xs leading-relaxed text-muted">
-              Der Maßstab sagt der App, wie viele Pixel einem Meter entsprechen.
-              Ohne ihn sind Längen nur Schätzungen. Du setzt{" "}
-              <strong>zwei freie Punkte</strong> auf einer Strecke, deren echte
-              Länge du kennst (z.&nbsp;B. 5&nbsp;m Außenwand). Die orangene
-              Messlinie erscheint sofort und bleibt, bis du übernimmst.
+              Zwei Punkte auf einer bekannten Strecke (z.&nbsp;B. 5&nbsp;m
+              Außenwand). Nach Punkt&nbsp;2 öffnet sich der Dialog auf dem Plan
+              – Länge dort eingeben. Winkel-Snap:{" "}
+              <strong>{ui.angleSnapDegrees}°</strong> (Shift = frei).
             </p>
             {!floor?.background && (
               <p className="mt-2 text-xs text-accent-ink">
-                Zuerst „Grundriss laden“, dann Maßstab setzen.
+                Zuerst „Grundriss laden“.
               </p>
             )}
             <div className="mt-2 text-xs">
               Punkt 1: {cal?.pointA ? "gesetzt" : "offen"} · Punkt 2:{" "}
-              {cal?.pointB ? "gesetzt" : "offen"}
+              {cal?.pointB ? "gesetzt → Dialog" : "offen"}
             </div>
-            <label className="mt-2 block text-xs font-medium">
-              Reale Länge (m)
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={calLength}
-                onChange={(e) => setCalLength(e.target.value)}
-                className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
-              />
-            </label>
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                disabled={!calReady}
-                onClick={() => finishCalibration(Number(calLength))}
-                className="rounded-md bg-ink px-3 py-1.5 text-xs font-semibold text-panel disabled:opacity-40"
-              >
-                Übernehmen
-              </button>
-              <button
-                type="button"
-                onClick={() => clearCalibration()}
-                className="rounded-md bg-surface px-3 py-1.5 text-xs font-medium"
-              >
-                Reset
-              </button>
-            </div>
+            {calReady && (
+              <p className="mt-2 text-[11px] text-accent-ink">
+                Länge im Dialog über dem Plan eingeben (nicht hier rechts).
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => clearCalibration()}
+              className="mt-2 rounded-md bg-surface px-3 py-1.5 text-xs font-medium"
+            >
+              Messung zurücksetzen
+            </button>
             {floor?.background?.metersPerPixel != null && (
               <p className="mt-2 text-[11px] text-ok">
                 Aktuell:{" "}
@@ -334,21 +358,65 @@ export function PropertiesPanel({
 
         {tab === "edit" && (
           <>
-        {multi && !wall && !opening && !symbol && !room && !connection && (
-          <Section title={`${ui.selectedIds.length} Objekte`}>
-            <p className="text-[11px] text-muted">
-              Mehrfachauswahl – in „Liste“ tippen oder im Plan klicken für
-              Einzeldetails.
-            </p>
-            <button
-              type="button"
-              className="mt-2 text-[11px] text-muted underline-offset-2 hover:underline"
-              onClick={() => setSelectedIds([])}
-            >
-              Auswahl leeren
-            </button>
-          </Section>
-        )}
+        {multi && (() => {
+          const selectedWalls = walls.filter((w) =>
+            ui.selectedIds.includes(w.id)
+          );
+          const selectedSyms = symbols.filter((s) =>
+            ui.selectedIds.includes(s.id)
+          );
+          if (selectedWalls.length >= 2 && selectedWalls.length === ui.selectedIds.length) {
+            return (
+              <Section title={`${selectedWalls.length} Wände`}>
+                <p className="mb-2 text-[11px] text-muted">
+                  Stärke für alle gewählten Wände setzen.
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {([0.1, 0.115, 0.12, 0.175, 0.24, 0.3, 0.365] as const).map(
+                    (t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-semibold hover:border-ink/30"
+                        onClick={() => {
+                          for (const w of selectedWalls) {
+                            updateWall(w.id, { thickness: t });
+                          }
+                          useFeedbackStore
+                            .getState()
+                            .showToast(
+                              `${selectedWalls.length}× ${(t * 100).toFixed(0)} cm`
+                            );
+                        }}
+                      >
+                        {(t * 100).toFixed(t >= 0.2 ? 0 : 1)} cm
+                      </button>
+                    )
+                  )}
+                </div>
+              </Section>
+            );
+          }
+          if (!wall && !opening && !symbol && !room && !connection) {
+            return (
+              <Section title={`${ui.selectedIds.length} Objekte`}>
+                <p className="text-[11px] text-muted">
+                  Mehrfachauswahl – gemeinsam Stromkreis/FI setzen oder einzeln
+                  bearbeiten.
+                </p>
+                {selectedSyms.length > 0 && <BulkCircuitAssign />}
+                <button
+                  type="button"
+                  className="mt-2 text-[11px] text-muted underline-offset-2 hover:underline"
+                  onClick={() => setSelectedIds([])}
+                >
+                  Auswahl leeren
+                </button>
+              </Section>
+            );
+          }
+          return null;
+        })()}
 
         {!hasSelection && !multi && (
           <Section title="Nichts ausgewählt">
@@ -386,6 +454,24 @@ export function PropertiesPanel({
                 className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
               />
             </label>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {([0.1, 0.115, 0.12, 0.175, 0.24, 0.3, 0.365] as const).map(
+                (t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+                      Math.abs(wall.thickness - t) < 0.001
+                        ? "border-ink bg-ink text-panel"
+                        : "border-line bg-surface hover:border-ink/30"
+                    }`}
+                    onClick={() => updateWall(wall.id, { thickness: t })}
+                  >
+                    {(t * 100).toFixed(t >= 0.2 ? 0 : 1)} cm
+                  </button>
+                )
+              )}
+            </div>
             <button
               type="button"
               onClick={() => removeWall(wall.id)}
@@ -410,6 +496,21 @@ export function PropertiesPanel({
                 className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
               />
             </label>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {(opening.kind === "door"
+                ? ([0.63, 0.76, 0.885, 0.91, 1.01] as const)
+                : ([0.6, 0.8, 1.0, 1.2, 1.5, 2.0] as const)
+              ).map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-semibold hover:border-ink/30"
+                  onClick={() => updateOpening(opening.id, { width: w })}
+                >
+                  {w} m
+                </button>
+              ))}
+            </div>
             <label className="mt-2 block text-xs font-medium">
               Höhe (m)
               <input
@@ -424,30 +525,30 @@ export function PropertiesPanel({
             </label>
             {opening.kind === "door" && (
               <>
-                <label className="mt-2 flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={opening.hingeLeft}
-                    onChange={(e) =>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    className="flex-1 rounded-md border border-line bg-surface px-2 py-1.5 text-[11px] font-semibold hover:border-ink/30"
+                    onClick={() =>
                       updateOpening(opening.id, {
-                        hingeLeft: e.target.checked,
+                        hingeLeft: !opening.hingeLeft,
                       })
                     }
-                  />
-                  Anschlag links
-                </label>
-                <label className="mt-2 flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={opening.opensInward}
-                    onChange={(e) =>
+                  >
+                    Anschlag {opening.hingeLeft ? "links" : "rechts"} ↻
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 rounded-md border border-line bg-surface px-2 py-1.5 text-[11px] font-semibold hover:border-ink/30"
+                    onClick={() =>
                       updateOpening(opening.id, {
-                        opensInward: e.target.checked,
+                        opensInward: !opening.opensInward,
                       })
                     }
-                  />
-                  Öffnet nach innen
-                </label>
+                  >
+                    {opening.opensInward ? "nach innen" : "nach außen"} ↻
+                  </button>
+                </div>
               </>
             )}
             <button
@@ -582,6 +683,29 @@ export function PropertiesPanel({
                 }
                 className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
               />
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {(
+                  [
+                    ["0,3", 0.3],
+                    ["1,05", 1.05],
+                    ["1,15", 1.15],
+                    ["1,8", 1.8],
+                    ["Decke", 2.5],
+                  ] as const
+                ).map(([label, h]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    title="DIN 18015-3 Vorzugszone (Orientierung)"
+                    className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-semibold hover:border-ink/30"
+                    onClick={() =>
+                      updateSymbol(symbol.id, { mountHeight: h })
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </label>
             <ColorField
               label="Symbolfarbe"
@@ -607,78 +731,7 @@ export function PropertiesPanel({
               hasDefault={Boolean(symbolColorDefaults[symbol.kind])}
               onClearDefault={() => setSymbolColorDefault(symbol.kind, null)}
             />
-            {(() => {
-              const panels = symbols.filter(
-                (s) =>
-                  s.floorId === activeFloorId &&
-                  s.kind === "distribution_board" &&
-                  s.id !== symbol.id
-              );
-              if (!panels.length || symbol.kind === "distribution_board") {
-                return null;
-              }
-              return (
-                <label className="mt-2 block text-xs font-medium">
-                  Verteiler
-                  <select
-                    value={symbol.panelId ?? ""}
-                    onChange={(e) =>
-                      updateSymbol(symbol.id, {
-                        panelId: e.target.value || undefined,
-                      })
-                    }
-                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
-                  >
-                    <option value="">
-                      {panels.length === 1
-                        ? "automatisch (einzige UV)"
-                        : "nicht zugeordnet"}
-                    </option>
-                    {panels.map((p, i) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label || `UV ${i + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              );
-            })()}
-            {ui.mode === "pro" && (
-              <>
-                <label className="mt-2 block text-xs font-medium">
-                  Stromkreis
-                  <input
-                    value={symbol.circuitId ?? ""}
-                    placeholder="z. B. F1.1"
-                    onChange={(e) =>
-                      updateSymbol(symbol.id, { circuitId: e.target.value })
-                    }
-                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
-                  />
-                </label>
-                <label className="mt-2 block text-xs font-medium">
-                  FI-Gruppe
-                  <input
-                    value={symbol.rcdGroup ?? ""}
-                    onChange={(e) =>
-                      updateSymbol(symbol.id, { rcdGroup: e.target.value })
-                    }
-                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
-                  />
-                </label>
-                <label className="mt-2 block text-xs font-medium">
-                  Leitungstyp
-                  <input
-                    value={symbol.cableType ?? ""}
-                    placeholder="NYM-J 3x1,5"
-                    onChange={(e) =>
-                      updateSymbol(symbol.id, { cableType: e.target.value })
-                    }
-                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
-                  />
-                </label>
-              </>
-            )}
+            <CircuitFields symbol={symbol} />
             <label className="mt-2 block text-xs font-medium">
               Notiz
               <textarea
@@ -705,6 +758,12 @@ export function PropertiesPanel({
             {(() => {
               const a = symbols.find((s) => s.id === connection.fromSymbolId);
               const b = symbols.find((s) => s.id === connection.toSymbolId);
+              const syncFromA =
+                a &&
+                b &&
+                (a.circuitId?.trim() ||
+                  a.rcdGroup?.trim() ||
+                  a.cableType?.trim());
               return (
                 <div className="space-y-1 text-xs">
                   <div>
@@ -718,6 +777,9 @@ export function PropertiesPanel({
                         ? a.label || getSymbolDef(a.kind).label
                         : "—"}
                     </button>
+                    {a?.circuitId && (
+                      <span className="ml-1 text-muted">{a.circuitId}</span>
+                    )}
                   </div>
                   <div>
                     Nach:{" "}
@@ -730,6 +792,9 @@ export function PropertiesPanel({
                         ? b.label || getSymbolDef(b.kind).label
                         : "—"}
                     </button>
+                    {b?.circuitId && (
+                      <span className="ml-1 text-muted">{b.circuitId}</span>
+                    )}
                   </div>
                   <div>
                     Länge ca.:{" "}
@@ -737,6 +802,27 @@ export function PropertiesPanel({
                       {(connection.estimatedLengthM ?? 0).toFixed(1)} m
                     </strong>
                   </div>
+                  {syncFromA && (
+                    <button
+                      type="button"
+                      className="mt-2 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-[11px] font-semibold hover:border-ink/30"
+                      onClick={() => {
+                        if (!a || !b) return;
+                        updateSymbol(b.id, {
+                          circuitId: a.circuitId || b.circuitId,
+                          rcdGroup: a.rcdGroup || b.rcdGroup,
+                          cableType: a.cableType || b.cableType,
+                          breakerRating: a.breakerRating || b.breakerRating,
+                          panelId: a.panelId || b.panelId,
+                        });
+                        useFeedbackStore
+                          .getState()
+                          .showToast("Kreis/FI/Leitung auf Ziel kopiert");
+                      }}
+                    >
+                      Kreis/FI vom Start auf Ziel kopieren
+                    </button>
+                  )}
                 </div>
               );
             })()}
@@ -775,6 +861,29 @@ export function PropertiesPanel({
                 className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
               />
             </label>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {(
+                [
+                  "Wohnen",
+                  "Küche",
+                  "Bad",
+                  "Schlafzimmer",
+                  "Flur",
+                  "Büro",
+                  "HWR",
+                  "Terrasse",
+                ] as const
+              ).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-semibold hover:border-ink/30"
+                  onClick={() => updateRoom(room.id, { name: n })}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
             <div className="mt-3">
               <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
                 Vorlage einfügen
@@ -785,7 +894,15 @@ export function PropertiesPanel({
                     key={t.id}
                     type="button"
                     title={t.tip}
-                    onClick={() => applyRoomTemplate(room.id, t.id)}
+                    onClick={() => {
+                      applyRoomTemplate(room.id, t.id);
+                      if (/^Raum\s*\d*$/i.test(room.name.trim())) {
+                        updateRoom(room.id, { name: t.label });
+                      }
+                      useFeedbackStore
+                        .getState()
+                        .showToast(`${t.label}: ${t.items.length} Symbole`);
+                    }}
                     className="rounded-md border border-line bg-surface px-2 py-2 text-left text-[11px] font-semibold hover:border-ink/30"
                   >
                     {t.label}

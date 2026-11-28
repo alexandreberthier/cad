@@ -54,6 +54,8 @@ export function KonvaSymbol({
 
   return (
     <Group>
+      {/* Größere Touch-Hitbox (Tablet) */}
+      <Circle radius={Math.max(selectR, 22)} fill="transparent" />
       {selected && (
         <Circle radius={selectR} stroke="#e08a1e" strokeWidth={2} dash={[4, 3]} />
       )}
@@ -86,18 +88,22 @@ export function KonvaSymbol({
           fill="#64748b"
         />
       )}
-      {showCircuit && circuitId && (
-        <Text
-          x={-20}
-          y={-(footprint ? footprint.d / 2 + 14 : 22)}
-          width={40}
-          align="center"
-          text={circuitId}
-          fontSize={9}
-          fontStyle="bold"
-          fill="#1a2332"
-        />
-      )}
+      {showCircuit &&
+        !def.isFurniture &&
+        def.category !== "sanitary" &&
+        def.category !== "panel" &&
+        !(def.category === "safety" && kind !== "alarm_siren") && (
+          <Text
+            x={-20}
+            y={-(footprint ? footprint.d / 2 + 14 : 22)}
+            width={40}
+            align="center"
+            text={circuitId?.trim() || "!"}
+            fontSize={9}
+            fontStyle="bold"
+            fill={circuitId?.trim() ? "#1a2332" : "#b42318"}
+          />
+        )}
     </Group>
   );
 }
@@ -151,6 +157,9 @@ function Glyph({
     case "outlet_counter":
     case "outlet_switched":
     case "outlet_usb":
+    case "outlet_16a":
+    case "outlet_outdoor":
+    case "outlet_child_safe":
       return (
         <Group>
           <Arc
@@ -168,6 +177,12 @@ function Glyph({
           )}
           {kind === "outlet_usb" && (
             <Text x={-6} y={2} text="USB" fontSize={6} fill={stroke} />
+          )}
+          {kind === "outlet_16a" && (
+            <Text x={-5} y={2} text="16" fontSize={6} fill={stroke} />
+          )}
+          {kind === "outlet_child_safe" && (
+            <Text x={-5} y={2} text="KS" fontSize={6} fill={stroke} />
           )}
         </Group>
       );
@@ -203,6 +218,7 @@ function Glyph({
         </Group>
       );
     case "outlet_floor":
+    case "outlet_underfloor":
       return (
         <Group>
           <Rect x={-9} y={-9} width={18} height={18} stroke={stroke} strokeWidth={sw} />
@@ -210,11 +226,16 @@ function Glyph({
         </Group>
       );
     case "switch_off":
+    case "switch_hotel":
+    case "switch_pilot":
       return (
         <Group>
           <Circle radius={11} stroke={stroke} strokeWidth={sw} />
           <Line points={[0, -8, 0, 0]} stroke={stroke} strokeWidth={sw} />
           <Line points={[0, 0, 7, -4]} stroke={stroke} strokeWidth={sw} />
+          {kind === "switch_pilot" && (
+            <Circle x={-5} y={5} radius={2.2} fill={stroke} />
+          )}
         </Group>
       );
     case "switch_changeover":
@@ -241,6 +262,8 @@ function Glyph({
         </Group>
       );
     case "switch_push":
+    case "switch_double_push":
+    case "knx_push":
       return (
         <Group>
           <Circle radius={11} stroke={stroke} strokeWidth={sw} />
@@ -264,6 +287,7 @@ function Glyph({
         </Group>
       );
     case "ceiling_outlet":
+    case "light_pendant":
       return (
         <Group>
           <Line points={[-7, -7, 7, 7]} stroke={stroke} strokeWidth={sw} />
@@ -271,6 +295,7 @@ function Glyph({
         </Group>
       );
     case "wall_outlet":
+    case "light_wall_sconce":
       return (
         <Group>
           <Line points={[-7, -7, 7, 7]} stroke={stroke} strokeWidth={sw} />
@@ -300,6 +325,7 @@ function Glyph({
         </Group>
       );
     case "light_outdoor":
+    case "light_garden":
       return (
         <Group>
           <Line points={[-7, -7, 7, 7]} stroke={stroke} strokeWidth={sw} />
@@ -308,9 +334,11 @@ function Glyph({
         </Group>
       );
     case "rj45":
+    case "rj45_double":
     case "phone":
     case "tv_sat":
     case "fiber":
+    case "hdmi_wall":
       return (
         <Group>
           <Rect x={-9} y={-6} width={18} height={14} stroke={stroke} strokeWidth={sw} />
@@ -322,6 +350,9 @@ function Glyph({
           {kind === "fiber" && (
             <Text x={-5} y={0} text="LWL" fontSize={6} fill={stroke} />
           )}
+          {kind === "rj45_double" && (
+            <Text x={-4} y={1} text="2×" fontSize={6} fill={stroke} />
+          )}
         </Group>
       );
     case "speaker":
@@ -332,6 +363,7 @@ function Glyph({
         </Group>
       );
     case "thermostat":
+    case "presence_sensor":
       return (
         <Group>
           <Rect x={-8} y={-10} width={16} height={20} stroke={stroke} strokeWidth={sw} />
@@ -353,10 +385,20 @@ function Glyph({
         </Group>
       );
     case "pv_inverter":
+    case "heat_pump":
+    case "floor_heating":
       return (
         <Group>
           <Rect x={-10} y={-10} width={20} height={20} stroke={stroke} strokeWidth={sw} />
-          <Text x={-7} y={-3} text="WR" fontSize={8} fill={stroke} />
+          <Text
+            x={-7}
+            y={-3}
+            text={
+              kind === "heat_pump" ? "WP" : kind === "floor_heating" ? "FH" : "WR"
+            }
+            fontSize={8}
+            fill={stroke}
+          />
         </Group>
       );
     case "fan_exhaust":
@@ -375,6 +417,11 @@ function Glyph({
         </Group>
       );
     case "smoke_detector":
+    case "water_leak":
+    case "gas_detector":
+    case "co_detector":
+    case "alarm_siren":
+    case "doorbell_chime":
       return (
         <Group>
           <Rect x={-8} y={-8} width={16} height={16} stroke={stroke} strokeWidth={sw} />
@@ -382,10 +429,20 @@ function Glyph({
         </Group>
       );
     case "distribution_board":
+    case "main_panel":
+    case "meter_cabinet":
+    case "data_cabinet":
+    case "surge_protector":
       return (
         <Group>
           <Rect x={-10} y={-12} width={20} height={24} stroke={stroke} strokeWidth={sw} />
           <Line points={[-10, -12, 10, 12]} stroke={stroke} strokeWidth={sw} />
+          {kind === "main_panel" && (
+            <Text x={-5} y={-2} text="HV" fontSize={7} fill={stroke} />
+          )}
+          {kind === "meter_cabinet" && (
+            <Text x={-5} y={-2} text="Z" fontSize={8} fill={stroke} />
+          )}
         </Group>
       );
     case "stove_outlet":

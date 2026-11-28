@@ -11,11 +11,12 @@ export function downloadDxf(data: ProjectData) {
 
   push(0, "SECTION", 2, "HEADER", 0, "ENDSEC");
   push(0, "SECTION", 2, "TABLES");
-  push(0, "TABLE", 2, "LAYER", 70, 6);
+  push(0, "TABLE", 2, "LAYER", 70, 7);
   for (const [name, color] of [
     ["WALLS", 7],
     ["OPENINGS", 4],
     ["SYMBOLS", 2],
+    ["CIRCUITS", 1],
     ["ROOMS", 3],
     ["WIRES", 8],
   ] as const) {
@@ -107,9 +108,6 @@ export function downloadDxf(data: ProjectData) {
         40,
         0.08
       );
-      const label = s.circuitId
-        ? `${def.labelPro} ${s.circuitId}`
-        : def.labelPro;
       push(
         0,
         "TEXT",
@@ -122,8 +120,27 @@ export function downloadDxf(data: ProjectData) {
         40,
         0.1,
         1,
-        label
+        def.labelPro
       );
+      if (s.circuitId?.trim()) {
+        const meta = [s.circuitId.trim(), s.rcdGroup?.trim(), s.breakerRating?.trim()]
+          .filter(Boolean)
+          .join(" · ");
+        push(
+          0,
+          "TEXT",
+          8,
+          "CIRCUITS",
+          10,
+          toX(s.position.x + 12),
+          20,
+          toY(s.position.y + 14),
+          40,
+          0.09,
+          1,
+          meta
+        );
+      }
     }
 
     for (const c of data.connections.filter((c) => c.floorId === floor.id)) {

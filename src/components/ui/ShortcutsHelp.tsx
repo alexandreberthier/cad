@@ -7,9 +7,15 @@ const ROWS: { keys: string; action: string }[] = [
   { keys: "W", action: "Wand zeichnen" },
   { keys: "R", action: "Raum zeichnen" },
   { keys: "T / F", action: "Tür / Fenster" },
+  { keys: "M", action: "Maßstab" },
+  { keys: "C", action: "Zuordnung (Leitung)" },
   { keys: "Q / E", action: "Drehen (15° · Shift = 90°)" },
   { keys: "Shift", action: "Freier Winkel / Mehrfach-Rechteck" },
   { keys: "Leertaste", action: "Plan verschieben (halten)" },
+  { keys: "0 / Home", action: "Plan einpassen (Zoom auf alles)" },
+  { keys: "Shift+0", action: "Auswahl einpassen" },
+  { keys: "Maßstab", action: "2 Punkte → Dialog mit Länge in m" },
+  { keys: "Strg+Shift+F", action: "Fehlende Kreise/FI automatisch" },
   { keys: "2 Finger", action: "Zoom + Pan (Touch / iPad)" },
   { keys: "Langdruck", action: "Mehrfach-Rechteck (Touch)" },
   { keys: "Strg+Klick", action: "Mehrfachauswahl ergänzen" },
@@ -17,6 +23,7 @@ const ROWS: { keys: string; action: string }[] = [
   { keys: "Strg+Z / Y", action: "Rückgängig / Wiederholen" },
   { keys: "Entf", action: "Auswahl löschen" },
   { keys: "Esc", action: "Zeichnung abbrechen / Auswahl leeren" },
+  { keys: "Plan-Check", action: "Hinweis antippen → Geräte markieren + Zoom" },
   { keys: "?", action: "Diese Hilfe" },
 ];
 

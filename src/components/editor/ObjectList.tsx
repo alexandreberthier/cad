@@ -23,6 +23,7 @@ export function ObjectList() {
 
   const floor = floors.find((f) => f.id === activeFloorId);
   const showFurniture = useProjectStore((s) => s.ui.showFurniture);
+  const showSanitary = useProjectStore((s) => s.ui.showSanitary);
   const mpp = floor?.background?.metersPerPixel ?? 0.02;
 
   const groups = useMemo(() => {
@@ -33,7 +34,9 @@ export function ObjectList() {
       .filter((s) => s.floorId === activeFloorId)
       .filter((s) => {
         const d = getSymbolDef(s.kind);
-        return showFurniture || !d.isFurniture;
+        if (!showFurniture && d.isFurniture) return false;
+        if (!showSanitary && d.category === "sanitary") return false;
+        return true;
       })
       .sort((a, b) => {
         const ca = getSymbolDef(a.kind).category;
@@ -41,11 +44,22 @@ export function ObjectList() {
         return ca.localeCompare(cb, "de");
       });
     return { walls: fw, openings: fo, rooms: fr, symbols: fs };
-  }, [walls, openings, rooms, symbols, activeFloorId, showFurniture]);
+  }, [
+    walls,
+    openings,
+    rooms,
+    symbols,
+    activeFloorId,
+    showFurniture,
+    showSanitary,
+  ]);
 
   const pick = (id: string) => {
     setTool("select");
     setSelectedIds([id]);
+    queueMicrotask(() => {
+      window.dispatchEvent(new CustomEvent("elektrocad:fit-selection"));
+    });
   };
 
   return (

@@ -32,7 +32,6 @@ import {
   dist,
   findWallForEdge,
   pointInPolygon,
-  projectOnWall,
   snapAngle,
   snapToEndpoints,
   wallAngle,
@@ -41,6 +40,13 @@ import {
 } from "@/lib/geometry/math";
 import { snapSymbolPlacement } from "@/lib/geometry/snapSymbol";
 import { saveProject } from "@/lib/db/dexie";
+import {
+  isPanelSymbol,
+  suggestBreaker,
+  suggestCableType,
+  suggestNextCircuitId,
+  suggestRcdGroup,
+} from "@/lib/circuits";
 
 interface ProjectStore extends ProjectData {
   ui: UiState;
@@ -57,6 +63,7 @@ interface ProjectStore extends ProjectData {
   setAngleSnapDegrees: (d: 15 | 45 | 90) => void;
   setShowFurniture: (v: boolean) => void;
   setShowSanitary: (v: boolean) => void;
+  setShowHeights: (v: boolean) => void;
   setSpacePanning: (v: boolean) => void;
   setShiftFreehand: (v: boolean) => void;
   setPrintBlackSymbols: (v: boolean) => void;
@@ -89,7 +96,10 @@ interface ProjectStore extends ProjectData {
   ) => Point2;
 
   // Openings
-  addOpening: (kind: "door" | "window", position: Point2) => void;
+  addOpening: (
+    kind: "door" | "window",
+    position: Point2
+  ) => import("@/types/project").Opening | null;
   updateOpening: (openingId: string, patch: Partial<Opening>) => void;
   removeOpening: (openingId: string) => void;
 
@@ -101,6 +111,23 @@ interface ProjectStore extends ProjectData {
   rotateSelected: (deltaRad: number) => void;
   copySelected: () => void;
   pasteClipboard: () => void;
+  /** Stromkreis/FI/Kabel auf Auswahl setzen */
+  assignSelectedCircuit: (
+    patch: Partial<
+      Pick<
+        PlanSymbol,
+        | "circuitId"
+        | "rcdGroup"
+        | "panelId"
+        | "cableType"
+        | "breakerRating"
+      >
+    >
+  ) => void;
+  /** Nächsten freien Kreis + typische FI/LS/Kabel vorschlagen */
+  applyCircuitSuggestions: (symbolId: string) => void;
+  /** Alle Geräte ohne Kreis auf der aktiven Etage automatisch befüllen */
+  applyMissingCircuitSuggestions: () => number;
   applyRoomTemplate: (roomId: string, templateId: string) => void;
 
   // Rooms
@@ -131,6 +158,7 @@ const defaultUi: UiState = {
   viewMode: "2d",
   tool: "select",
   selectedSymbolKind: null,
+  recentSymbolKinds: [],
   selectedIds: [],
   wallThickness: 0.12,
   defaultFloorHeight: 2.5,
@@ -175,9 +203,22 @@ export const useProjectStore = create<ProjectStore>()(
           },
         })),
       setSelectedSymbolKind: (kind) =>
-        set((s) => ({
-          ui: { ...s.ui, selectedSymbolKind: kind, tool: kind ? "symbol" : s.ui.tool },
-        })),
+        set((s) => {
+          const recent = kind
+            ? [
+                kind,
+                ...s.ui.recentSymbolKinds.filter((k) => k !== kind),
+              ].slice(0, 8)
+            : s.ui.recentSymbolKinds;
+          return {
+            ui: {
+              ...s.ui,
+              selectedSymbolKind: kind,
+              recentSymbolKinds: recent,
+              tool: kind ? "symbol" : s.ui.tool,
+            },
+          };
+        }),
       setSelectedIds: (ids) => set((s) => ({ ui: { ...s.ui, selectedIds: ids } })),
       setWallThickness: (m) => set((s) => ({ ui: { ...s.ui, wallThickness: m } })),
       setDefaultFloorHeight: (m) =>
@@ -190,6 +231,7 @@ export const useProjectStore = create<ProjectStore>()(
         set((s) => ({ ui: { ...s.ui, angleSnapDegrees: d } })),
       setShowFurniture: (v) => set((s) => ({ ui: { ...s.ui, showFurniture: v } })),
       setShowSanitary: (v) => set((s) => ({ ui: { ...s.ui, showSanitary: v } })),
+      setShowHeights: (v) => set((s) => ({ ui: { ...s.ui, showHeights: v } })),
       setSpacePanning: (v) => set((s) => ({ ui: { ...s.ui, spacePanning: v } })),
       setShiftFreehand: (v) => set((s) => ({ ui: { ...s.ui, shiftFreehand: v } })),
       setPrintBlackSymbols: (v) =>
@@ -278,13 +320,23 @@ export const useProjectStore = create<ProjectStore>()(
         });
       },
 
-      setBackground: (floorId, bg) =>
+      setBackground: (floorId, bg) => {
         set({
           floors: get().floors.map((f) =>
             f.id === floorId ? { ...f, background: bg } : f
           ),
           meta: withUpdated(get().meta),
-        }),
+        });
+        if (bg) {
+          queueMicrotask(() => {
+            window.dispatchEvent(new CustomEvent("elektrocad:fit-plan"));
+          });
+          // Nach Layout nochmal – sonst oft zu kleiner Zoom beim ersten Laden
+          window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("elektrocad:fit-plan"));
+          }, 120);
+        }
+      },
 
       setBackgroundOpacity: (opacity) => {
         const floorId = get().activeFloorId;
@@ -348,6 +400,14 @@ export const useProjectStore = create<ProjectStore>()(
           }),
           meta: withUpdated(get().meta),
         });
+        const after = get().getActiveFloor()?.background?.calibration;
+        if (after?.pointA && after?.pointB) {
+          queueMicrotask(() => {
+            window.dispatchEvent(
+              new CustomEvent("elektrocad:fit-calibration")
+            );
+          });
+        }
       },
 
       finishCalibration: (realLengthM) => {
@@ -373,6 +433,9 @@ export const useProjectStore = create<ProjectStore>()(
           meta: withUpdated(get().meta),
           ui: { ...get().ui, tool: "select" },
         });
+        queueMicrotask(() => {
+          window.dispatchEvent(new CustomEvent("elektrocad:fit-plan"));
+        });
       },
 
       clearCalibration: () => {
@@ -393,11 +456,17 @@ export const useProjectStore = create<ProjectStore>()(
       previewSnapPoint: (from, raw, opts) => {
         const { walls, activeFloorId, ui } = get();
         const floorWalls = walls.filter((w) => w.floorId === activeFloorId);
-        let p = snapToEndpoints(raw, floorWalls, 12);
+        // Tablet: größerer Fangradius
+        const thresh =
+          typeof window !== "undefined" &&
+          window.matchMedia("(pointer: coarse)").matches
+            ? 28
+            : 14;
+        let p = snapToEndpoints(raw, floorWalls, thresh);
         const freehand = opts?.freehand || ui.shiftFreehand;
         if (from && ui.angleSnapEnabled && !freehand) {
           p = snapAngle(from, p, ui.angleSnapDegrees);
-          p = snapToEndpoints(p, floorWalls, 12);
+          p = snapToEndpoints(p, floorWalls, thresh);
         }
         return p;
       },
@@ -445,8 +514,11 @@ export const useProjectStore = create<ProjectStore>()(
         const floorWalls = get().walls.filter(
           (w) => w.floorId === get().activeFloorId
         );
-        const hit = closestWall(floorWalls, position, 40);
-        if (!hit) return;
+        const coarse =
+          typeof window !== "undefined" &&
+          window.matchMedia("(pointer: coarse)").matches;
+        const hit = closestWall(floorWalls, position, coarse ? 56 : 40);
+        if (!hit) return null;
         const mpp = get().getMetersPerPixel();
         const opening: Opening = {
           id: id(),
@@ -460,14 +532,14 @@ export const useProjectStore = create<ProjectStore>()(
           hingeLeft: true,
           opensInward: true,
         };
-        // ensure opening fits on wall
         const wallLenM = dist(hit.wall.start, hit.wall.end) * mpp;
-        if (opening.width > wallLenM * 0.95) return;
+        if (opening.width > wallLenM * 0.95) return null;
         set({
           openings: [...get().openings, opening],
           meta: withUpdated(get().meta),
           ui: { ...get().ui, selectedIds: [opening.id] },
         });
+        return opening;
       },
 
       updateOpening: (openingId, patch) =>
@@ -503,6 +575,12 @@ export const useProjectStore = create<ProjectStore>()(
           pointInPolygon(snap.position, r.points)
         );
 
+        const panelish = isPanelSymbol({ kind });
+        const floorPanels = get().symbols.filter(
+          (s) => s.floorId === floorId && isPanelSymbol(s)
+        );
+        const autoPanelId =
+          !panelish && floorPanels.length === 1 ? floorPanels[0].id : undefined;
         const symbol: PlanSymbol = {
           id: id(),
           floorId,
@@ -515,6 +593,17 @@ export const useProjectStore = create<ProjectStore>()(
           wallSide: snap.wallSide,
           roomId: room?.id,
           label: def.label,
+          panelId: autoPanelId,
+          ...(panelish ||
+          def.isFurniture ||
+          def.category === "sanitary" ||
+          (def.category === "safety" && kind !== "alarm_siren")
+            ? {}
+            : {
+                rcdGroup: suggestRcdGroup(kind),
+                cableType: suggestCableType(kind),
+                breakerRating: suggestBreaker(kind),
+              }),
         };
 
         set({
@@ -531,6 +620,94 @@ export const useProjectStore = create<ProjectStore>()(
           ),
           meta: withUpdated(get().meta),
         }),
+
+      assignSelectedCircuit: (patch) => {
+        const ids = new Set(get().ui.selectedIds);
+        if (!ids.size) return;
+        set({
+          symbols: get().symbols.map((s) =>
+            ids.has(s.id) ? { ...s, ...patch } : s
+          ),
+          meta: withUpdated(get().meta),
+        });
+      },
+
+      applyCircuitSuggestions: (symbolId) => {
+        const s = get().symbols.find((x) => x.id === symbolId);
+        if (!s || isPanelSymbol(s)) return;
+        const floorSymbols = get().symbols.filter(
+          (x) => x.floorId === s.floorId
+        );
+        const rcd = s.rcdGroup?.trim() || suggestRcdGroup(s.kind);
+        const circuitId =
+          s.circuitId?.trim() ||
+          suggestNextCircuitId(floorSymbols, {
+            rcdGroup: rcd,
+            panelId: s.panelId,
+          });
+        set({
+          symbols: get().symbols.map((x) =>
+            x.id === symbolId
+              ? {
+                  ...x,
+                  circuitId,
+                  rcdGroup: rcd,
+                  cableType: x.cableType?.trim() || suggestCableType(x.kind),
+                  breakerRating:
+                    x.breakerRating?.trim() || suggestBreaker(x.kind),
+                }
+              : x
+          ),
+          meta: withUpdated(get().meta),
+        });
+      },
+
+      applyMissingCircuitSuggestions: () => {
+        const floorId = get().activeFloorId;
+        const next = get().symbols.map((s) => ({ ...s }));
+        let filled = 0;
+        /** Gleiche FI + Kategorie teilen sich einen neuen Kreis */
+        const groupCircuit = new Map<string, string>();
+        for (let i = 0; i < next.length; i++) {
+          const s = next[i];
+          if (s.floorId !== floorId || isPanelSymbol(s)) continue;
+          const def = getSymbolDef(s.kind);
+          if (
+            def.isFurniture ||
+            def.category === "sanitary" ||
+            (def.category === "safety" && s.kind !== "alarm_siren")
+          ) {
+            continue;
+          }
+          if (s.circuitId?.trim() && s.rcdGroup?.trim()) continue;
+          const floorSnap = next.filter((x) => x.floorId === floorId);
+          const rcd = s.rcdGroup?.trim() || suggestRcdGroup(s.kind);
+          const gKey = `${s.panelId ?? ""}|${rcd}|${def.category}`;
+          let circuitId = s.circuitId?.trim();
+          if (!circuitId) {
+            circuitId = groupCircuit.get(gKey);
+            if (!circuitId) {
+              circuitId = suggestNextCircuitId(floorSnap, {
+                rcdGroup: rcd,
+                panelId: s.panelId,
+              });
+              groupCircuit.set(gKey, circuitId);
+            }
+          }
+          next[i] = {
+            ...s,
+            circuitId,
+            rcdGroup: rcd,
+            cableType: s.cableType?.trim() || suggestCableType(s.kind),
+            breakerRating: s.breakerRating?.trim() || suggestBreaker(s.kind),
+          };
+          filled += 1;
+        }
+        if (filled) {
+          set({ symbols: next, meta: withUpdated(get().meta) });
+        }
+        return filled;
+      },
 
       rotateSelected: (deltaRad) => {
         const ids = new Set(get().ui.selectedIds);
@@ -680,7 +857,26 @@ export const useProjectStore = create<ProjectStore>()(
             wallSide: side,
             roomId: room.id,
             label: item.label ?? def.label,
-            circuitId: item.circuitId,
+            ...(def.isFurniture ||
+            def.category === "sanitary" ||
+            isPanelSymbol({ kind: item.kind }) ||
+            (def.category === "safety" && item.kind !== "alarm_siren")
+              ? {}
+              : {
+                  circuitId: item.circuitId,
+                  rcdGroup: item.rcdGroup,
+                  cableType: item.cableType ?? suggestCableType(item.kind),
+                  breakerRating:
+                    item.breakerRating ?? suggestBreaker(item.kind),
+                  panelId:
+                    get().symbols.filter(
+                      (s) => s.floorId === floorId && isPanelSymbol(s)
+                    ).length === 1
+                      ? get().symbols.find(
+                          (s) => s.floorId === floorId && isPanelSymbol(s)
+                        )?.id
+                      : undefined,
+                }),
           });
         }
 
@@ -728,10 +924,25 @@ export const useProjectStore = create<ProjectStore>()(
         );
         patch.roomId = room?.id;
 
+        const symbols = get().symbols.map((s) =>
+          s.id === symbolId ? { ...s, ...patch } : s
+        );
+        const connections = get().connections.map((c) => {
+          if (c.fromSymbolId !== symbolId && c.toSymbolId !== symbolId) {
+            return c;
+          }
+          const a = symbols.find((s) => s.id === c.fromSymbolId);
+          const b = symbols.find((s) => s.id === c.toSymbolId);
+          if (!a || !b) return c;
+          return {
+            ...c,
+            estimatedLengthM: dist(a.position, b.position) * mpp * 1.15,
+          };
+        });
+
         set({
-          symbols: get().symbols.map((s) =>
-            s.id === symbolId ? { ...s, ...patch } : s
-          ),
+          symbols,
+          connections,
           meta: withUpdated(get().meta),
         });
       },

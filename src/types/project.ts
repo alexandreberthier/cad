@@ -104,6 +104,11 @@ export type SymbolKind =
   | "outlet_counter"
   | "outlet_floor"
   | "outlet_switched"
+  | "outlet_usb"
+  | "outlet_16a"
+  | "outlet_underfloor"
+  | "outlet_outdoor"
+  | "outlet_child_safe"
   // Schalter
   | "switch_off"
   | "switch_changeover"
@@ -112,6 +117,10 @@ export type SymbolKind =
   | "switch_push"
   | "switch_dimmer"
   | "shutter_switch"
+  | "switch_hotel"
+  | "switch_double_push"
+  | "switch_pilot"
+  | "knx_push"
   // Licht
   | "ceiling_outlet"
   | "wall_outlet"
@@ -119,35 +128,52 @@ export type SymbolKind =
   | "light_led_strip"
   | "light_outdoor"
   | "emergency_light"
+  | "light_pendant"
+  | "light_wall_sconce"
+  | "light_garden"
   // Daten / AV
   | "rj45"
+  | "rj45_double"
   | "tv_sat"
   | "phone"
   | "fiber"
   | "speaker"
+  | "hdmi_wall"
   // Steuerung / Smart
   | "wireless_actor"
   | "doorbell"
+  | "doorbell_outdoor"
   | "intercom"
   | "thermostat"
+  | "presence_sensor"
   // Sicherheit
   | "motion_sensor"
   | "smoke_detector"
+  | "co_detector"
   | "camera_cctv"
+  | "water_leak"
+  | "gas_detector"
+  | "alarm_siren"
   // Verteiler / Festanschluss
   | "distribution_board"
+  | "main_panel"
+  | "meter_cabinet"
+  | "data_cabinet"
   | "junction_box"
+  | "surge_protector"
+  | "doorbell_chime"
   | "stove_outlet"
   | "water_heater"
   | "ev_charger"
   | "pv_inverter"
+  | "heat_pump"
+  | "floor_heating"
   // Geräte (Elektro)
   | "washing_machine"
   | "dryer"
   | "dishwasher"
   | "extractor_hood"
   | "fan_exhaust"
-  | "outlet_usb"
   // Sanitär (DIN 1356 / ISO 4067 angelehnt)
   | "san_toilet"
   | "san_sink"
@@ -202,6 +228,8 @@ export interface PlanSymbol {
   /** Zugeordnete Unterverteilung (distribution_board-Symbol) */
   panelId?: string;
   cableType?: string;
+  /** Leitungsschutz z. B. B16, C20 3P */
+  breakerRating?: string;
   note?: string;
   roomId?: RoomId;
   label?: string;
@@ -257,6 +285,8 @@ export interface UiState {
   viewMode: ViewMode;
   tool: Tool;
   selectedSymbolKind: SymbolKind | null;
+  /** Zuletzt genutzte Symbole (schnell wiederholen) */
+  recentSymbolKinds: SymbolKind[];
   selectedIds: string[];
   wallThickness: number;
   /** Standard-Geschosshöhe für neue Etagen (m) */

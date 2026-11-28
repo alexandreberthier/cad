@@ -1,7 +1,14 @@
 import { saveAs } from "file-saver";
 import { jsPDF } from "jspdf";
 import type { ProjectData } from "@/types/project";
-import { bomCsv, bomForSymbols, circuitForest, kindSummary } from "@/lib/bom";
+import {
+  bomCsv,
+  bomForSymbols,
+  circuitDetailCsv,
+  circuitForest,
+  kindSummary,
+} from "@/lib/bom";
+import { analyzePlanHealth } from "@/lib/planHealth";
 import { CATEGORY_LABELS } from "@/lib/symbols/catalog";
 import { normalizeProjectData } from "@/lib/projectFactory";
 
@@ -17,6 +24,13 @@ export function downloadBomCsv(data: ProjectData) {
     type: "text/csv;charset=utf-8",
   });
   saveAs(blob, `${safeName(data.meta.name)}-stueckliste.csv`);
+}
+
+export function downloadCircuitCsv(data: ProjectData) {
+  const blob = new Blob(["\uFEFF" + circuitDetailCsv(data)], {
+    type: "text/csv;charset=utf-8",
+  });
+  saveAs(blob, `${safeName(data.meta.name)}-stromkreise.csv`);
 }
 
 export function downloadReportPdf(data: ProjectData, planPng?: string | null) {
@@ -47,6 +61,43 @@ export function downloadReportPdf(data: ProjectData, planPng?: string | null) {
     9,
     8
   );
+
+  const anyBg = data.floors.some((f) => f.background);
+  const unscaled = data.floors.some(
+    (f) => f.background && f.background.metersPerPixel == null
+  );
+  const health = analyzePlanHealth(data.symbols, {
+    hasBackground: anyBg,
+    metersPerPixel: unscaled ? null : 0.02,
+  });
+  const healthWarns = health.filter((i) => i.level === "warn");
+  if (healthWarns.length) {
+    doc.setFont("helvetica", "bold");
+    line("Plan-Check (Hinweise)", 12, 6);
+    doc.setFont("helvetica", "normal");
+    for (const h of healthWarns.slice(0, 8)) {
+      line(`• ${h.title}${h.detail ? ` – ${h.detail}` : ""}`, 9, 4.5);
+    }
+    y += 2;
+  }
+
+  const legend = bomForSymbols(data.symbols);
+  if (legend.length) {
+    doc.setFont("helvetica", "bold");
+    line("Legende (verwendete Symbole)", 12, 6);
+    doc.setFont("helvetica", "normal");
+    for (const r of legend.slice(0, 40)) {
+      line(
+        `${r.labelPro}  ·  ${CATEGORY_LABELS[r.category]}  ·  ${r.count}×`,
+        9,
+        4.2
+      );
+    }
+    if (legend.length > 40) {
+      line(`… und ${legend.length - 40} weitere`, 8, 4);
+    }
+    y += 2;
+  }
 
   for (const floor of [...data.floors].sort((a, b) => a.order - b.order)) {
     doc.setFont("helvetica", "bold");
@@ -80,14 +131,31 @@ export function downloadReportPdf(data: ProjectData, planPng?: string | null) {
         for (const rcd of panel.rcds) {
           line(`   ${rcd.title}  (${rcd.count})`, 10, 5);
           for (const c of rcd.circuits) {
+            const meta = [c.breakerRating, c.cableType]
+              .filter(Boolean)
+              .join(" · ");
             line(
-              `      ${c.title}  (${c.devices.length})  ${kindSummary(c.devices, true)}`,
+              `      ${c.title}  (${c.devices.length})${meta ? `  ${meta}` : ""}`,
               9,
               4.6
             );
+            line(`         ${kindSummary(c.devices, true)}`, 8, 4.2);
           }
         }
       }
+    }
+
+    const floorWires = data.connections.filter((c) => c.floorId === floor.id);
+    if (floorWires.length) {
+      const meters = floorWires.reduce(
+        (n, c) => n + (c.estimatedLengthM ?? 0),
+        0
+      );
+      line(
+        `Verbindungslinien: ${floorWires.length} · ca. ${meters.toFixed(1)} m (Luftlinie ×1,15)`,
+        9,
+        5
+      );
     }
     y += 4;
   }

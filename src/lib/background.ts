@@ -56,12 +56,13 @@ export async function loadBackgroundFile(file: File): Promise<BackgroundImage> {
   return {
     src: loaded.src,
     mimeType: isPdf ? "application/pdf" : file.type || "image/png",
-    opacity: 0.65,
+    opacity: 0.72,
     locked: true,
     widthPx: loaded.width,
     heightPx: loaded.height,
-    offsetX: 40,
-    offsetY: 40,
+    /** Welt-Ursprung – Viewport zentriert danach per Einpassen */
+    offsetX: 0,
+    offsetY: 0,
     metersPerPixel: null,
   };
 }

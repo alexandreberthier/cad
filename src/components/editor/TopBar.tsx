@@ -1,11 +1,12 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "@/store/projectStore";
 import { useFeedbackStore } from "@/store/feedbackStore";
 import { IconRedo, IconUndo } from "@/components/icons/ToolIcons";
 import {
   downloadBomCsv,
+  downloadCircuitCsv,
   downloadProjectJson,
   downloadReportPdf,
   parseProjectFile,
@@ -18,6 +19,7 @@ import {
   type ProjectRecord,
 } from "@/lib/db/dexie";
 import type { ProjectData } from "@/types/project";
+import { analyzePlanHealth } from "@/lib/planHealth";
 
 const FLOOR_PRESETS = ["KG", "EG", "OG", "DG"];
 
@@ -77,6 +79,18 @@ export function TopBar() {
   const undo = () => useProjectStore.temporal.getState().undo();
   const redo = () => useProjectStore.temporal.getState().redo();
   const activeFloor = floors.find((f) => f.id === activeFloorId);
+  const allSymbols = useProjectStore((s) => s.symbols);
+  const warnCount = useMemo(() => {
+    const floor = floors.find((f) => f.id === activeFloorId);
+    const issues = analyzePlanHealth(
+      allSymbols.filter((s) => s.floorId === activeFloorId),
+      {
+        hasBackground: Boolean(floor?.background),
+        metersPerPixel: floor?.background?.metersPerPixel,
+      }
+    );
+    return issues.filter((i) => i.level === "warn").length;
+  }, [allSymbols, activeFloorId, floors]);
   const importRef = useRef<HTMLInputElement>(null);
   const planMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -160,8 +174,24 @@ export function TopBar() {
             aria-label="Projektname"
             title="Projektname"
           />
-          <div className="text-[10px] text-muted">
-            {activeFloor?.name ?? "—"} · {formatSaved(lastSavedAt)}
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
+            <span>
+              {activeFloor?.name ?? "—"} · {formatSaved(lastSavedAt)}
+            </span>
+            {warnCount > 0 && (
+              <button
+                type="button"
+                className="rounded bg-accent-soft px-1.5 py-0.5 font-semibold text-accent-ink hover:brightness-95"
+                title="Plan-Check in der Sidebar öffnen"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("elektrocad:open-plan-tab")
+                  );
+                }}
+              >
+                {warnCount} Hinweis{warnCount === 1 ? "" : "e"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -461,6 +491,14 @@ export function TopBar() {
                   closeMenus();
                 }}
                 label="Stückliste (CSV)"
+              />
+              <MenuButton
+                onClick={() => {
+                  downloadCircuitCsv(snapshot());
+                  showToast("Stromkreis-Liste gespeichert");
+                  closeMenus();
+                }}
+                label="Stromkreise (CSV)"
               />
               <MenuButton
                 onClick={() => {
