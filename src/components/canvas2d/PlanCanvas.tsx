@@ -1227,7 +1227,8 @@ export function PlanCanvas() {
                   { length: Math.round(360 / ui.angleSnapDegrees) },
                   (_, i) => {
                     const a = (i * ui.angleSnapDegrees * Math.PI) / 180;
-                    const len = 180;
+                    const inv = 1 / Math.max(0.2, scale);
+                    const len = 160 * inv;
                     return (
                       <Line
                         key={i}
@@ -1238,7 +1239,7 @@ export function PlanCanvas() {
                           draftStart.y + Math.sin(a) * len,
                         ]}
                         stroke="#94a3b8"
-                        strokeWidth={0.6}
+                        strokeWidth={0.7 * inv}
                         opacity={0.35}
                         listening={false}
                       />
@@ -1678,6 +1679,31 @@ export function PlanCanvas() {
         >
           Einpassen
         </button>
+        {(ui.tool === "wall" ||
+          ui.tool === "room" ||
+          ui.tool === "calibrate") && (
+          <div className="pointer-events-auto flex items-center gap-1 rounded-md bg-panel p-0.5 shadow-sm">
+            {([15, 45, 90] as const).map((d) => (
+              <button
+                key={d}
+                type="button"
+                className={`rounded px-2 py-1 text-[11px] font-semibold ${
+                  ui.angleSnapEnabled && ui.angleSnapDegrees === d
+                    ? "bg-ink text-panel"
+                    : "text-muted hover:bg-surface hover:text-ink"
+                }`}
+                onClick={() => {
+                  useProjectStore.getState().setAngleSnapDegrees(d);
+                  if (!ui.angleSnapEnabled) {
+                    useProjectStore.getState().toggleAngleSnap();
+                  }
+                }}
+              >
+                {d}°
+              </button>
+            ))}
+          </div>
+        )}
         <div className="max-w-xl rounded-md bg-ink px-2.5 py-1.5 text-[11px] font-medium text-panel shadow-sm">
           {hint}
         </div>

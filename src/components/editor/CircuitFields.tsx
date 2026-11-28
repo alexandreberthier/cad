@@ -57,6 +57,22 @@ export function BulkCircuitAssign() {
           <option key={c} value={c} />
         ))}
       </datalist>
+      <div className="flex flex-wrap gap-1">
+        {RCD_PRESETS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+              rcdGroup === c
+                ? "border-ink bg-ink text-panel"
+                : "border-line bg-panel hover:border-ink/30"
+            }`}
+            onClick={() => setRcdGroup(c)}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
       <div className="grid grid-cols-2 gap-1.5">
         <input
           className="w-full rounded border border-line bg-panel px-2 py-1 text-xs"
@@ -247,6 +263,22 @@ export function CircuitFields({ symbol }: { symbol: PlanSymbol }) {
           ))}
         </datalist>
       </label>
+      <div className="flex flex-wrap gap-1">
+        {RCD_PRESETS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+              symbol.rcdGroup === c
+                ? "border-ink bg-ink text-panel"
+                : "border-line bg-panel hover:border-ink/30"
+            }`}
+            onClick={() => updateSymbol(symbol.id, { rcdGroup: c })}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
 
       <div className="grid grid-cols-2 gap-2">
         <label className="block text-xs font-medium">
@@ -283,6 +315,22 @@ export function CircuitFields({ symbol }: { symbol: PlanSymbol }) {
             ))}
           </datalist>
         </label>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {BREAKER_PRESETS.slice(0, 5).map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+              symbol.breakerRating === c
+                ? "border-ink bg-ink text-panel"
+                : "border-line bg-panel hover:border-ink/30"
+            }`}
+            onClick={() => updateSymbol(symbol.id, { breakerRating: c })}
+          >
+            {c}
+          </button>
+        ))}
       </div>
     </div>
   );
